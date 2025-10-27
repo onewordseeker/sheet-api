@@ -582,9 +582,8 @@ app.post('/api/generate-answers', upload.fields([
     console.log(`Found ${questions.length} questions. Generating answer sheets...`);
     console.log('Questions extracted:', questions.map(q => ({ number: q.number, taskTitle: q.taskTitle })));
 
-    // Define template path (same as sample function)
-    const projectRoot = path.join(__dirname, '..');
-    const templatePath = path.join(projectRoot, 'template.docx');
+    // Define template path (now in backend directory)
+    const templatePath = path.join(__dirname, 'template.docx');
 
     // Generate 1 answer sheet for testing (can be increased later)
     const generatedAnswerSheets = [];
@@ -822,14 +821,13 @@ app.get('/api/download-sample', async (req, res) => {
     const fs = require('fs');
     const path = require('path');
     
-    // Check if template file exists
-    const projectRoot = path.join(__dirname, '..');
-    const templatePath = path.join(projectRoot, 'template.docx');
+    // Check if template file exists (now in backend directory)
+    const templatePath = path.join(__dirname, 'template.docx');
     
     if (!fs.existsSync(templatePath)) {
       return res.status(404).json({ 
         error: 'Template file not found', 
-        message: 'Please ensure template.docx is in the project root directory',
+        message: 'Please ensure template.docx is in the backend directory',
         expectedPath: templatePath
       });
     }

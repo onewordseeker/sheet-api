@@ -83,7 +83,7 @@ const settingsSchema = new mongoose.Schema({
   // Template Settings
   templatePath: {
     type: String,
-    default: '../template.docx'
+    default: 'template.docx'
   },
   customTemplate: {
     type: String,
@@ -182,7 +182,7 @@ settingsSchema.statics.getDefaultSettings = function() {
     wordCountTarget: 500,
     includeExamples: true,
     includeReferences: false,
-    templatePath: '../template.docx',
+    templatePath: 'template.docx',
     customTemplate: null,
     notifications: {
       onGenerationComplete: true,

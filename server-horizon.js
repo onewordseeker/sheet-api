@@ -180,7 +180,7 @@ app.post('/api/generate-answers', upload.single('pdf'), async (req, res) => {
       fs.mkdirSync(outputDir, { recursive: true });
     }
 
-    const templatePath = path.join(__dirname, '..', 'template.docx');
+    const templatePath = path.join(__dirname, 'template.docx');
     const generatedSheets = [];
     const storageIds = [];
 
@@ -330,7 +330,7 @@ app.post('/api/generate-answers', upload.single('pdf'), async (req, res) => {
         }
       };
 
-      const templatePath = path.join(__dirname, '..', 'template.docx');
+      const templatePath = path.join(__dirname, 'template.docx');
       const outputPath = path.join('output', `horizon-fallback-${Date.now()}.docx`);
       
       const docxBuffer = await createAnswerSheet(templatePath, outputPath, sampleData);
@@ -465,7 +465,7 @@ app.get('/api/download-sample', async (req, res) => {
     }
 
     // Generate sample document
-    const templatePath = path.join(__dirname, '..', 'template.docx');
+    const templatePath = path.join(__dirname, 'template.docx');
     const outputPath = path.join(outputDir, `horizon-sample-${Date.now()}.docx`);
     
     console.log(`Generating sample document with template: ${templatePath}`);
