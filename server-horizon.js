@@ -1,5 +1,6 @@
 require('dotenv').config();
 const express = require('express');
+const cors = require('cors');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
@@ -62,22 +63,68 @@ const upload = multer({
 // Storage for generated answer sheets (temporary file storage)
 const answerSheetStorage = new Map();
 
-// CORS middleware for horizon-ui
-app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', 'http://localhost:3000'); // horizon-ui default port
-  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
-  
-  if (req.method === 'OPTIONS') {
-    res.sendStatus(200);
-  } else {
-    next();
-  }
-});
+// CORS configuration for horizon-ui - supports both development and production
+const corsOptions = {
+  origin: function (origin, callback) {
+    // Get allowed origins from environment variable or use defaults
+    const allowedOrigins = process.env.ALLOWED_ORIGINS 
+      ? process.env.ALLOWED_ORIGINS.split(',')
+      : [
+          'http://localhost:3000',  // Development
+          'https://localhost:3000', // Development with HTTPS
+          'https://*.vercel.app',   // Vercel deployments
+          'https://*.netlify.app',  // Netlify deployments
+          'https://*.railway.app'   // Railway deployments
+        ];
+    
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    // Check if origin is allowed
+    const isAllowed = allowedOrigins.some(allowedOrigin => {
+      if (allowedOrigin.includes('*')) {
+        const pattern = allowedOrigin.replace(/\*/g, '.*');
+        return new RegExp(`^${pattern}$`).test(origin);
+      }
+      return allowedOrigin === origin;
+    });
+    
+    if (isAllowed) {
+      callback(null, true);
+    } else {
+      console.log(`CORS blocked origin: ${origin}`);
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Origin', 'X-Requested-With', 'Content-Type', 'Accept', 'Authorization']
+};
+
+app.use(cors(corsOptions));
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'OK', service: 'horizon-ui-backend', timestamp: new Date().toISOString() });
+  res.json({ 
+    status: 'OK', 
+    service: 'horizon-ui-backend', 
+    timestamp: new Date().toISOString(),
+    cors: {
+      origin: req.headers.origin,
+      allowedOrigins: process.env.ALLOWED_ORIGINS || 'default'
+    }
+  });
+});
+
+// CORS debug endpoint
+app.get('/api/cors-debug', (req, res) => {
+  res.json({
+    origin: req.headers.origin,
+    referer: req.headers.referer,
+    userAgent: req.headers['user-agent'],
+    allowedOrigins: process.env.ALLOWED_ORIGINS || 'default',
+    timestamp: new Date().toISOString()
+  });
 });
 
 // Generate answer sheets endpoint for horizon-ui
