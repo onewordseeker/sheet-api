@@ -426,12 +426,7 @@ This is Sheet ${sheetNumber} - make it completely unique!`;
       
       console.log(`AI Settings - Temp: ${finalTemp.toFixed(2)}, Tokens: ${variableMaxTokens}, Presence: ${presencePenalty.toFixed(2)}, Frequency: ${frequencyPenalty.toFixed(2)}`);
       
-      const completion = await openai.chat.completions.create({
-        model: settings.openaiModel || "gpt-4o-mini",
-        messages: [
-          {
-            role: "system",
-            content: `You're ${persona}. You're writing exam answers based on your practical experience.
+      const defaultSystem = `You're ${persona}. You're writing exam answers based on your practical experience.
 
 HUMANIZATION RULES (CRITICAL):
 1. Write with PERSONALITY - you've lived this stuff
@@ -457,7 +452,33 @@ Format: • Topic/concept: Natural explanation with real examples.
 
 DO NOT use any HTML tags or formatting - just plain text.
 
-Sheet ${sheetNumber} - completely unique from other versions.`
+Sheet ${sheetNumber} - completely unique from other versions.`;
+
+      let systemContent = (settings.systemPrompt && settings.systemPrompt.trim().length > 0)
+        ? settings.systemPrompt
+        : defaultSystem;
+
+      // Simple templating for custom prompts
+      if (settings.systemPrompt && settings.systemPrompt.trim().length > 0) {
+        const replacements = {
+          '{{persona}}': persona,
+          '{{targetBullets}}': String(targetBullets),
+          '{{sheetNumber}}': String(sheetNumber),
+          '{{answerFormat}}': answerFormat,
+          '{{wordCountTarget}}': String(wordCountTarget),
+          '{{documentContext}}': documentText.substring(0, 2000),
+        };
+        for (const key in replacements) {
+          systemContent = systemContent.split(key).join(replacements[key]);
+        }
+      }
+
+      const completion = await openai.chat.completions.create({
+        model: settings.openaiModel || "gpt-4o-mini",
+        messages: [
+          {
+            role: "system",
+            content: systemContent
           },
           {
             role: "user",
