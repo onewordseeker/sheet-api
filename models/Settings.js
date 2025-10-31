@@ -78,6 +78,11 @@ const settingsSchema = new mongoose.Schema({
     type: Boolean,
     default: false
   },
+  // Prompt Settings
+  systemPrompt: {
+    type: String,
+    default: ''
+  },
   
   // Template Settings
   templatePath: {
@@ -181,6 +186,7 @@ settingsSchema.statics.getDefaultSettings = function() {
     wordCountTarget: 500,
     includeExamples: true,
     includeReferences: false,
+    systemPrompt: '',
     templatePath: 'template.docx',
     customTemplate: null,
     notifications: {

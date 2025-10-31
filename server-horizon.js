@@ -4,6 +4,7 @@ const cors = require('cors');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const archiver = require('archiver');
 const pdfParse = require('pdf-parse');
 const OpenAI = require('openai');
 
@@ -14,6 +15,8 @@ const connectDB = require('./config/database');
 const AnswerSheet = require('./models/AnswerSheet');
 const User = require('./models/User');
 const Settings = require('./models/Settings');
+const CandidateList = require('./models/CandidateList');
+const Candidate = require('./models/Candidate');
 
 // Import our new utility functions
 const { extractQuestionsFromText } = require('./utils-horizon');
@@ -32,7 +35,7 @@ const openai = new OpenAI({
 app.use(express.json());
 app.use(express.static('public'));
 
-// Configure multer for file uploads
+// Configure multer for file uploads (PDF)
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     const uploadDir = 'uploads';
@@ -59,6 +62,55 @@ const upload = multer({
     }
   }
 });
+
+// Separate multer instance for CSV uploads
+const csvStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const uploadDir = 'uploads';
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
+    }
+    cb(null, uploadDir);
+  },
+  filename: (req, file, cb) => {
+    cb(null, Date.now() + '-' + file.originalname);
+  }
+});
+
+const uploadCsv = multer({
+  storage: csvStorage,
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const allowed = ['text/csv', 'application/vnd.ms-excel'];
+    if (allowed.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only CSV files are allowed'));
+    }
+  }
+});
+
+// Minimal CSV parser: expects header with sequence id, learner name, learner id
+function parseCsvSimple(csvText) {
+  const lines = csvText.split(/\r?\n/).filter(l => l.trim().length > 0);
+  if (lines.length === 0) return [];
+  const header = lines.shift();
+  const cols = header.split(',').map(h => h.trim().toLowerCase());
+  const idxSeq = cols.findIndex(c => c.includes('sequence'));
+  const idxName = cols.findIndex(c => c.includes('name'));
+  const idxId = cols.findIndex(c => c.includes('id') || c.includes('number'));
+  const rows = [];
+  for (const line of lines) {
+    const parts = line.split(',').map(p => p.trim().replace(/^"|"$/g, ''));
+    const sequenceId = idxSeq >= 0 ? (parseInt(parts[idxSeq], 10) || null) : null;
+    const learnerName = idxName >= 0 ? parts[idxName] : parts[0];
+    const learnerId = idxId >= 0 ? parts[idxId] : parts[1] || '';
+    if (learnerName && learnerId) {
+      rows.push({ sequenceId, learnerName, learnerId });
+    }
+  }
+  return rows;
+}
 
 // Storage for generated answer sheets (temporary file storage)
 const answerSheetStorage = new Map();
@@ -125,6 +177,125 @@ app.get('/api/cors-debug', (req, res) => {
     allowedOrigins: process.env.ALLOWED_ORIGINS || 'default',
     timestamp: new Date().toISOString()
   });
+});
+
+// Candidate Lists: upload CSV and manage lists
+app.post('/api/candidate-lists/upload', uploadCsv.single('file'), async (req, res) => {
+  try {
+    const { title, description } = req.body;
+    if (!title) {
+      return res.status(400).json({ error: 'Title is required' });
+    }
+    if (!req.file) {
+      return res.status(400).json({ error: 'CSV file is required' });
+    }
+
+    const csvBuffer = fs.readFileSync(req.file.path);
+    const text = csvBuffer.toString('utf-8');
+    const rows = parseCsvSimple(text);
+    if (rows.length === 0) {
+      fs.unlinkSync(req.file.path);
+      return res.status(400).json({ error: 'No valid rows found in CSV' });
+    }
+
+    const adminUser = await User.findOne({ email: 'admin@example.com' });
+    const list = new CandidateList({ title, description: description || '', createdBy: adminUser?.email || 'admin@example.com', entriesCount: rows.length });
+    await list.save();
+
+    const docs = rows.map(r => ({ listId: list._id, sequenceId: r.sequenceId, learnerName: r.learnerName, learnerId: r.learnerId }));
+    await Candidate.insertMany(docs);
+
+    fs.unlinkSync(req.file.path);
+
+    res.json({ success: true, listId: list._id, title: list.title, entriesCount: rows.length });
+  } catch (error) {
+    console.error('CSV upload error:', error);
+    return res.status(500).json({ error: 'Failed to upload CSV list' });
+  }
+});
+
+app.get('/api/candidate-lists', async (req, res) => {
+  try {
+    const lists = await CandidateList.find().sort({ createdAt: -1 });
+    res.json({ success: true, lists: lists.map(l => ({ id: l._id, title: l.title, description: l.description, entriesCount: l.entriesCount, createdAt: l.createdAt })) });
+  } catch (error) {
+    console.error('List fetch error:', error);
+    res.status(500).json({ error: 'Failed to fetch lists' });
+  }
+});
+
+app.get('/api/candidate-lists/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const list = await CandidateList.findById(id);
+    if (!list) return res.status(404).json({ error: 'List not found' });
+    const candidates = await Candidate.find({ listId: id }).sort({ sequenceId: 1, learnerName: 1 });
+    res.json({ success: true, list: { id: list._id, title: list.title, description: list.description, entriesCount: list.entriesCount, createdAt: list.createdAt }, candidates: candidates.map(c => ({ id: c._id, sequenceId: c.sequenceId, learnerName: c.learnerName, learnerId: c.learnerId })) });
+  } catch (error) {
+    console.error('List detail error:', error);
+    res.status(500).json({ error: 'Failed to fetch list details' });
+  }
+});
+
+app.patch('/api/candidate-lists/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { title, description } = req.body;
+    const list = await CandidateList.findById(id);
+    if (!list) return res.status(404).json({ error: 'List not found' });
+    if (title !== undefined) list.title = title;
+    if (description !== undefined) list.description = description;
+    await list.save();
+    res.json({ success: true, list: { id: list._id, title: list.title, description: list.description } });
+  } catch (error) {
+    console.error('List update error:', error);
+    res.status(500).json({ error: 'Failed to update list' });
+  }
+});
+
+app.delete('/api/candidate-lists/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const list = await CandidateList.findById(id);
+    if (!list) return res.status(404).json({ error: 'List not found' });
+    await Candidate.deleteMany({ listId: id });
+    await list.deleteOne();
+    res.json({ success: true });
+  } catch (error) {
+    console.error('List delete error:', error);
+    res.status(500).json({ error: 'Failed to delete list' });
+  }
+});
+
+app.patch('/api/candidates/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { sequenceId, learnerName, learnerId } = req.body;
+    const c = await Candidate.findById(id);
+    if (!c) return res.status(404).json({ error: 'Candidate not found' });
+    if (sequenceId !== undefined) c.sequenceId = sequenceId;
+    if (learnerName !== undefined) c.learnerName = learnerName;
+    if (learnerId !== undefined) c.learnerId = learnerId;
+    await c.save();
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Candidate update error:', error);
+    res.status(500).json({ error: 'Failed to update candidate' });
+  }
+});
+
+app.delete('/api/candidates/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const c = await Candidate.findById(id);
+    if (!c) return res.status(404).json({ error: 'Candidate not found' });
+    await c.deleteOne();
+    await CandidateList.findByIdAndUpdate(c.listId, { $inc: { entriesCount: -1 } });
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Candidate delete error:', error);
+    res.status(500).json({ error: 'Failed to delete candidate' });
+  }
 });
 
 // Generate answer sheets endpoint for horizon-ui
@@ -366,6 +537,110 @@ app.post('/api/generate-answers', upload.single('pdf'), async (req, res) => {
   }
 });
 
+// Batch generation: one answer sheet per candidate
+app.post('/api/generate-answers/batch', upload.single('pdf'), async (req, res) => {
+  const startTime = Date.now();
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No PDF file uploaded' });
+    }
+    const { listId, candidateIds, generateAll } = req.body;
+    if (!listId) return res.status(400).json({ error: 'listId is required' });
+
+    const list = await CandidateList.findById(listId);
+    if (!list) return res.status(404).json({ error: 'List not found' });
+
+    let selectedCandidates = [];
+    if (generateAll === 'true' || generateAll === true) {
+      selectedCandidates = await Candidate.find({ listId }).sort({ sequenceId: 1, learnerName: 1 });
+    } else {
+      const ids = Array.isArray(candidateIds) ? candidateIds : (candidateIds ? [candidateIds] : []);
+      if (ids.length === 0) return res.status(400).json({ error: 'candidateIds are required unless generateAll=true' });
+      selectedCandidates = await Candidate.find({ _id: { $in: ids } });
+    }
+
+    if (selectedCandidates.length === 0) {
+      return res.status(400).json({ error: 'No candidates to generate' });
+    }
+
+    const pdfBuffer = fs.readFileSync(req.file.path);
+    const pdfData = await pdfParse(pdfBuffer);
+    const documentText = pdfData.text;
+
+    const questions = extractQuestionsFromText(documentText);
+    if (questions.length === 0) {
+      return res.status(400).json({ error: 'No questions found in the PDF' });
+    }
+
+    const adminUser = await User.findOne({ email: 'admin@example.com' });
+    const settings = await Settings.getOrCreateSettings(adminUser._id);
+    const openaiWithSettings = new OpenAI({ apiKey: settings.openaiApiKey || process.env.OPENAI_API_KEY });
+
+    const outputDir = 'output';
+    if (!fs.existsSync(outputDir)) {
+      fs.mkdirSync(outputDir, { recursive: true });
+    }
+    const templatePath = path.join(__dirname, 'template.docx');
+
+    const results = [];
+
+    for (const cand of selectedCandidates) {
+      try {
+        const answers = await generateAnswersForQuestions(questions, documentText, openaiWithSettings, settings, 1);
+        const answerSheetData = { name: cand.learnerName, number: cand.learnerId, answers, wordCount: 0 };
+        const outputPath = path.join(outputDir, `horizon-answer-sheet-${Date.now()}-${cand._id}.docx`);
+        const docxBuffer = await createAnswerSheet(templatePath, outputPath, answerSheetData);
+
+        const storageId = `horizon-${Date.now()}-${cand._id}`;
+        answerSheetStorage.set(storageId, {
+          buffer: docxBuffer,
+          filename: `answer-sheet-${cand.learnerName.replace(/\s+/g, '-')}-${Date.now()}.docx`,
+          timestamp: new Date().toISOString()
+        });
+
+        const record = new AnswerSheet({
+          learnerName: cand.learnerName,
+          learnerNumber: cand.learnerId,
+          originalPdfName: req.file.originalname,
+          originalPdfPath: req.file.path,
+          generatedDocxPath: outputPath,
+          generatedDocxName: `answer-sheet-${cand.learnerName.replace(/\s+/g, '-')}-${Date.now()}.docx`,
+          extractedText: documentText,
+          questionsCount: questions.length,
+          tasksCount: Object.keys(answers).length,
+          totalQuestions: questions.length,
+          totalTasks: Object.keys(answers).length,
+          answers: answers,
+          wordCount: 0,
+          processingTime: Date.now() - startTime,
+          aiModel: settings.openaiModel || 'GPT-4',
+          temperature: settings.temperature || 0.7,
+          maxTokens: settings.maxTokens || 800,
+          status: 'completed',
+          storageId: storageId,
+          fileSize: docxBuffer.length,
+          createdBy: adminUser.email
+        });
+        await record.save();
+
+        results.push({ id: storageId, candidateId: cand._id, name: cand.learnerName });
+      } catch (err) {
+        console.error('Batch generation error for candidate', cand._id, err);
+      }
+    }
+
+    fs.unlinkSync(req.file.path);
+
+    res.json({ success: true, generated: results, count: results.length });
+  } catch (error) {
+    console.error('Batch generation error:', error);
+    if (req.file && fs.existsSync(req.file.path)) {
+      fs.unlinkSync(req.file.path);
+    }
+    res.status(500).json({ error: 'Failed to generate batch answer sheets' });
+  }
+});
+
 // Download answer sheet endpoint for horizon-ui
 app.post('/api/download-answer-sheet', async (req, res) => {
   try {
@@ -429,6 +704,56 @@ app.post('/api/download-answer-sheet', async (req, res) => {
   } catch (error) {
     console.error('Error downloading answer sheet:', error);
     res.status(500).json({ error: 'Failed to download answer sheet' });
+  }
+});
+
+// Download multiple answer sheets as a ZIP
+app.post('/api/download-answer-sheets-zip', async (req, res) => {
+  try {
+    const { storageIds } = req.body || {};
+    if (!Array.isArray(storageIds) || storageIds.length === 0) {
+      return res.status(400).json({ error: 'storageIds array is required' });
+    }
+
+    // Prepare response headers for zip streaming
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', 'attachment; filename="answer-sheets.zip"');
+
+    const archive = archiver('zip', { zlib: { level: 9 } });
+    archive.on('error', (err) => {
+      console.error('Archiver error:', err);
+      try { res.status(500).end(); } catch (e) {}
+    });
+    archive.pipe(res);
+
+    for (const id of storageIds) {
+      try {
+        const answerSheet = await AnswerSheet.findOne({ storageId: id, status: 'completed' });
+        if (!answerSheet) {
+          continue;
+        }
+
+        // Try in-memory buffer first
+        const storedData = answerSheetStorage.get(id);
+        let buffer = storedData?.buffer;
+        let filename = storedData?.filename || answerSheet.generatedDocxName || `answer-sheet-${id}.docx`;
+
+        if (!buffer && answerSheet.generatedDocxPath && fs.existsSync(answerSheet.generatedDocxPath)) {
+          buffer = fs.readFileSync(answerSheet.generatedDocxPath);
+        }
+
+        if (buffer) {
+          archive.append(buffer, { name: filename });
+        }
+      } catch (err) {
+        console.error('Error adding file to zip:', id, err);
+      }
+    }
+
+    archive.finalize();
+  } catch (error) {
+    console.error('ZIP download error:', error);
+    res.status(500).json({ error: 'Failed to create ZIP file' });
   }
 });
 
