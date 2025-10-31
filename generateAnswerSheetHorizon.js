@@ -70,6 +70,42 @@ function parseBoldText(text) {
 }
 
 /**
+ * Normalize incoming markup to expected bold tags, and strip stray markdown
+ * without altering the bold mechanism (<b>..</b> parsing stays as-is).
+ * - Fix spaced/uppercase tags like < b >, </ B > → <b>, </b>
+ * - Convert **text** to <b>text</b>
+ * - Convert __text__ to <b>text</b>
+ * - Convert *text* to plain text (if not already handled by **)
+ * - Remove [text] brackets while keeping inner text
+ */
+function normalizeBoldMarkup(text) {
+  if (!text) return text;
+  let out = text;
+  // Collapse spaced/uppercase bold tags to canonical <b> </b>
+  out = out.replace(/<\s*b\s*>/gi, '<b>');
+  out = out.replace(/<\s*\/\s*b\s*>/gi, '</b>');
+
+  // Convert <strong> to <b>
+  out = out.replace(/<\s*strong\s*>/gi, '<b>');
+  out = out.replace(/<\s*\/\s*strong\s*>/gi, '</b>');
+
+  // Convert markdown strong to <b>
+  out = out.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
+  out = out.replace(/__(.+?)__/g, '<b>$1</b>');
+
+  // Convert single-asterisk emphasis to plain text (avoid nesting conflicts)
+  out = out.replace(/\*(?!\*)([^*]+)\*(?!\*)/g, '$1');
+
+  // Remove square brackets while keeping content (e.g., [text] -> text)
+  out = out.replace(/\[([^\]]+)\]/g, '$1');
+
+  // Strip any remaining HTML tags except <b> and </b>
+  out = out.replace(/<(?!\/?b\b)[^>]*>/gi, '');
+
+  return out;
+}
+
+/**
  * Generate Word XML for answers with proper formatting
  * @param {Object} answers - The answers object with task-based structure
  * @returns {string} Word XML string
@@ -103,7 +139,8 @@ function generateAnswersXml(answers) {
           xml += `<w:p><w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="1"/></w:numPr></w:pPr>`;
           
           // Parse bold text formatting
-          const parts = parseBoldText(cleanLine);
+          const normalized = normalizeBoldMarkup(cleanLine);
+          const parts = parseBoldText(normalized);
           for (const part of parts) {
             if (part.bold) {
               xml += `<w:r><w:rPr><w:b/></w:rPr><w:t xml:space="preserve">${escapeXml(part.text)}</w:t></w:r>`;

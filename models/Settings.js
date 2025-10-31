@@ -57,8 +57,7 @@ const settingsSchema = new mongoose.Schema({
   numberOfSheets: {
     type: Number,
     default: 1,
-    min: 1,
-    max: 10
+    min: 1
   },
   answerFormat: {
     type: String,
