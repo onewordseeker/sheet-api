@@ -4,24 +4,27 @@
  */
 
 /**
- * Apply humanization tricks to reduce AI detection
+ * Apply natural humanization to reduce AI detection (balanced approach)
  */
 function applyHumanizationTricks(text) {
-  // 1. Replace AI-typical phrases
+  // 1. Replace AI-typical phrases with natural alternatives
   const aiPhrases = {
-    'Additionally,': ['Also,', 'Plus,', 'On top of that,', 'What\'s more,', 'And'],
-    'Furthermore,': ['Also,', 'Plus,', 'Besides,', 'And', 'On top of this,'],
-    'Moreover,': ['Also,', 'Plus,', 'What\'s more,', 'And', 'Beyond that,'],
-    'In conclusion,': ['So overall,', 'To sum up,', 'Bottom line,', 'In short,'],
-    'It is important to note that': ['Worth noting:', 'Thing is,', 'Key point:', 'Important:'],
-    'It should be noted that': ['Note that', 'Keep in mind', 'Remember', 'Worth saying'],
+    'Additionally,': ['Also,', 'Plus,', 'And', 'Right,'],
+    'Furthermore,': ['Also,', 'Plus,', 'And', 'Thing is,'],
+    'Moreover,': ['Also,', 'Plus,', 'And', 'Actually,'],
+    'In conclusion,': ['So overall,', 'To sum up,', 'Bottom line,', 'So'],
+    'It is important to note that': ['Worth noting:', 'Thing is,', 'Important:', 'Remember:'],
+    'It should be noted that': ['Note that', 'Keep in mind', 'Remember'],
     ' comprehensive ': [' thorough ', ' detailed ', ' complete ', ' full '],
     ' utilize ': [' use ', ' apply ', ' employ '],
-    ' implement ': [' put in place ', ' set up ', ' start using ', ' roll out '],
-    ' facilitate ': [' help ', ' enable ', ' make easier ', ' support '],
+    ' implement ': [' put in place ', ' set up ', ' start ', ' do '],
+    ' facilitate ': [' help ', ' enable ', ' support ', ' allow '],
     ' demonstrate ': [' show ', ' prove ', ' illustrate ', ' indicate '],
     ' leverage ': [' use ', ' make use of ', ' take advantage of '],
-    ' paradigm ': [' model ', ' approach ', ' way of doing things ']
+    ' paradigm ': [' model ', ' approach ', ' way ', ' method '],
+    'In order to': ['To', 'So we can'],
+    'In the event that': ['If', 'When'],
+    'With regard to': ['About', 'For'],
   };
   
   let humanized = text;
@@ -33,7 +36,7 @@ function applyHumanizationTricks(text) {
     });
   }
   
-  // 2. Add contractions (60% of the time)
+  // 2. Add contractions naturally (60-65% of the time)
   const contractions = {
     ' do not ': ' don\'t ',
     ' does not ': ' doesn\'t ',
@@ -41,32 +44,36 @@ function applyHumanizationTricks(text) {
     ' will not ': ' won\'t ',
     ' should not ': ' shouldn\'t ',
     ' would not ': ' wouldn\'t ',
+    ' could not ': ' couldn\'t ',
     ' it is ': ' it\'s ',
     ' that is ': ' that\'s ',
     ' there is ': ' there\'s ',
     ' they are ': ' they\'re ',
     ' we are ': ' we\'re ',
-    ' you are ': ' you\'re '
+    ' you are ': ' you\'re ',
+    ' I am ': ' I\'m ',
+    ' you have ': ' you\'ve ',
+    ' we have ': ' we\'ve '
   };
   
   for (const [full, contracted] of Object.entries(contractions)) {
     const regex = new RegExp(full, 'gi');
     humanized = humanized.replace(regex, (match) => {
-      return Math.random() < 0.6 ? contracted : match;
+      return Math.random() < 0.62 ? contracted : match;
     });
   }
   
-  // 3. Add natural transitions occasionally
+  // 3. Add natural transitions occasionally (not too frequently)
   humanized = humanized.replace(/\.\s+([A-Z])/g, (match, letter) => {
     const rand = Math.random();
-    if (rand < 0.10) return `. So ${letter.toLowerCase()}`;
-    if (rand < 0.15) return `. Now, ${letter.toLowerCase()}`;
-    if (rand < 0.18) return `. Well, ${letter.toLowerCase()}`;
-    if (rand < 0.20) return `. Thing is, ${letter.toLowerCase()}`;
+    if (rand < 0.08) return `. So ${letter.toLowerCase()}`;
+    if (rand < 0.12) return `. Now, ${letter.toLowerCase()}`;
+    if (rand < 0.15) return `. Well, ${letter.toLowerCase()}`;
+    if (rand < 0.18) return `. Thing is, ${letter.toLowerCase()}`;
     return match;
   });
   
-  // 4. British English spelling
+  // 4. British English spelling (more comprehensive)
   const britishSpelling = {
     'organize': 'organise',
     'organized': 'organised',
@@ -74,16 +81,96 @@ function applyHumanizationTricks(text) {
     'organizations': 'organisations',
     'realize': 'realise',
     'realized': 'realised',
+    'realizes': 'realises',
     'analyze': 'analyse',
     'analyzed': 'analysed',
+    'analyzes': 'analyses',
     'color': 'colour',
-    'favor': 'favour'
+    'colors': 'colours',
+    'favor': 'favour',
+    'favors': 'favours',
+    'behavior': 'behaviour',
+    'behaviors': 'behaviours',
+    'center': 'centre',
+    'centers': 'centres',
+    'defense': 'defence',
+    'defenses': 'defences'
   };
   
   for (const [american, british] of Object.entries(britishSpelling)) {
     const regex = new RegExp(`\\b${american}\\b`, 'gi');
     humanized = humanized.replace(regex, british);
   }
+  
+  // 5. Replace formal transitions with natural alternatives (subtle)
+  const casualPhrases = [
+    { pattern: /\bTherefore\b/gi, replacements: ['So', 'That means', 'This means'] },
+    { pattern: /\bHowever\b/gi, replacements: ['But', 'Mind you,', 'Having said that,'] },
+    { pattern: /\bConsequently\b/gi, replacements: ['So', 'Because of that', 'As a result'] },
+    { pattern: /\bNevertheless\b/gi, replacements: ['Still', 'Even so', 'But'] }
+  ];
+  
+  for (const { pattern, replacements } of casualPhrases) {
+    humanized = humanized.replace(pattern, (match) => {
+      if (Math.random() < 0.25) {
+        return replacements[Math.floor(Math.random() * replacements.length)];
+      }
+      return match;
+    });
+  }
+  
+  // 6. Vary sentence structures - convert some passive to active voice naturally
+  humanized = humanized.replace(/\bIt is ([a-z]+ed)\s+that/gi, (match, verb) => {
+    if (Math.random() < 0.15) {
+      return `We ${verb} that`;
+    }
+    return match;
+  });
+  
+  // 7. Break repetitive sentence patterns (addresses AI detector issue #4)
+  // Change repetitive "This allows...", "The system is designed to..." patterns
+  const repetitivePatterns = [
+    { pattern: /\bThis allows\b/gi, alternatives: ['This means', 'This lets', 'So we can', 'Which means'] },
+    { pattern: /\bThe system is designed to\b/gi, alternatives: ['The system helps', 'We designed it to', 'It\'s meant to', 'It works to'] },
+    { pattern: /\bThis ensures\b/gi, alternatives: ['This means', 'This keeps', 'So that', 'Which keeps'] },
+    { pattern: /\bIt is important\b/gi, alternatives: ['Key point:', 'Worth noting:', 'Remember:', 'Important:'] }
+  ];
+  
+  for (const { pattern, alternatives } of repetitivePatterns) {
+    humanized = humanized.replace(pattern, (match, offset, string) => {
+      // Check if this pattern appears multiple times - if so, vary it
+      const occurrences = (string.match(new RegExp(pattern.source, 'gi')) || []).length;
+      if (occurrences > 1 && Math.random() < 0.4) {
+        return alternatives[Math.floor(Math.random() * alternatives.length)];
+      }
+      return match;
+    });
+  }
+  
+  // 8. Add thinking indicators - show thought progression (addresses issue #5)
+  // Add "However," "On the other hand," "That's why," etc. naturally
+  humanized = humanized.replace(/\.\s+([A-Z][a-z]+ is)/g, (match, start) => {
+    const thinkingIndicators = ['However, ', 'On the other hand, ', 'That\'s why ', 'So ', 'Now, ', 'But '];
+    if (Math.random() < 0.12) {
+      const indicator = thinkingIndicators[Math.floor(Math.random() * thinkingIndicators.length)];
+      return '. ' + indicator.toLowerCase() + start.toLowerCase();
+    }
+    return match;
+  });
+  
+  // 9. Vary sentence beginnings to break uniformity (addresses issue #1)
+  // Occasionally start sentences with different structures
+  humanized = humanized.replace(/^([•]\s*)([A-Z][a-z]+)\s+(is|are|can|should|must|will)/gm, (match, bullet, subject, verb) => {
+    const variations = [
+      `${bullet}${subject} ${verb}`,
+      `${bullet}When it comes to ${subject.toLowerCase()}, it ${verb}`,
+      `${bullet}For ${subject.toLowerCase()}, we ${verb === 'is' ? 'have' : verb}`,
+    ];
+    if (Math.random() < 0.15) {
+      return variations[Math.floor(Math.random() * variations.length)];
+    }
+    return match;
+  });
   
   return humanized;
 }
@@ -98,12 +185,21 @@ function formatBulletPoints(text) {
   // Split into lines
   const lines = text.split('\n');
   const formattedLines = [];
+  let bulletCount = 0;
   
-  for (let line of lines) {
-    line = line.trim();
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
     
     // If line starts with bullet point
     if (line.startsWith('•')) {
+      bulletCount++;
+      
+      // Randomize formatting rhythm (addresses "randomize formatting rhythm" feedback)
+      // Occasionally add blank line before a bullet (10% chance, not too often)
+      if (bulletCount > 1 && Math.random() < 0.10 && formattedLines.length > 0) {
+        formattedLines.push(''); // Blank line for natural spacing variation
+      }
+      
       // Remove the bullet temporarily
       let content = line.substring(1).trim();
       
@@ -341,6 +437,75 @@ function extractQuestionsFromText(text) {
 }
 
 /**
+ * Add subtle natural variations to text (addresses AI detector issues #2 and #3)
+ */
+function addSubtleHumanImperfections(text) {
+  let result = text;
+  
+  // 1. Very occasionally add natural comma variation (humans sometimes pause mid-thought)
+  result = result.replace(/\s+and\s+([a-z])/gi, (match, letter, offset, str) => {
+    // Only in longer phrases where comma feels natural
+    if (Math.random() < 0.05 && match.length > 12) {
+      return ', and ' + letter;
+    }
+    return match;
+  });
+  
+  // 2. Add slight imperfections in transitions (addresses issue #2 - perfect grammar)
+  // Occasionally use slightly imperfect but natural transitions
+  result = result.replace(/\b(However|Therefore|Additionally|Furthermore)\s*,/gi, (match, word) => {
+    if (Math.random() < 0.08) {
+      // Occasionally drop the comma or change structure
+      const variations = {
+        'However': ['But', 'Though', 'Mind you'],
+        'Therefore': ['So', 'That\'s why', 'Because of this'],
+        'Additionally': ['Also', 'Plus'],
+        'Furthermore': ['Also', 'And']
+      };
+      const alt = variations[word];
+      return alt ? alt[Math.floor(Math.random() * alt.length)] + ' ' : match;
+    }
+    return match;
+  });
+  
+  // 3. Occasionally break up long perfectly structured sentences (addresses issue #1 - uniformity)
+  // Split very long sentences with good flow into two shorter ones
+  result = result.replace(/([^.!?]{80,120})\.\s+([A-Z])/g, (match, firstPart, secondPart) => {
+    if (Math.random() < 0.10 && firstPart.includes(',')) {
+      // Find a good break point (comma near the middle)
+      const commaIndex = firstPart.lastIndexOf(',');
+      if (commaIndex > 30 && commaIndex < firstPart.length - 30) {
+        const part1 = firstPart.substring(0, commaIndex);
+        const part2 = firstPart.substring(commaIndex + 1).trim();
+        return `${part1}. ${part2.charAt(0).toUpperCase() + part2.slice(1)}. ${secondPart}`;
+      }
+    }
+    return match;
+  });
+  
+  // 4. Add subtle emotion/stress indicators (addresses issue #3 - lack of emotion/bias)
+  // Very occasionally add slight emphasis or concern
+  result = result.replace(/\b(critical|important|essential)\s+(point|factor|aspect)/gi, (match, adj, noun) => {
+    if (Math.random() < 0.06) {
+      return `really ${adj} ${noun}`; // Adds slight emphasis
+    }
+    return match;
+  });
+  
+  // 5. Add mid-thought connectors - natural hesitations and thinking (addresses "think aloud" feedback)
+  result = result.replace(/\.\s+([A-Z][a-z]+)/g, (match, word) => {
+    if (Math.random() < 0.05) { // 5% chance for natural hesitation
+      const fillers = [' Actually, ', ' To be fair, ', ' I guess ', ' You know, ', ' Mind you, '];
+      const filler = fillers[Math.floor(Math.random() * fillers.length)];
+      return `.${filler}${word.toLowerCase()}`;
+    }
+    return match;
+  });
+  
+  return result;
+}
+
+/**
  * Generate answers with anti-AI-detection measures
  */
 async function generateAnswersForQuestions(questions, documentText, openai, settings, sheetNumber) {
@@ -349,15 +514,15 @@ async function generateAnswersForQuestions(questions, documentText, openai, sett
   
   const taskGroups = {};
   
-  // Personal voices for variation
+  // Personal voices with lived details for realism
   const personas = [
-    'Alex, a 27-year-old safety coordinator from Leeds who worked at a chemical plant',
-    'Sarah, a 31-year-old HSE manager from Glasgow with 8 years experience',
-    'Mike, a 29-year-old safety officer from Birmingham working in construction',
-    'Emma, a 26-year-old environmental health officer from Liverpool',
-    'David, a 33-year-old safety consultant from Manchester',
-    'Rachel, a 28-year-old safety supervisor from Bristol',
-    'Tom, a 30-year-old QHSE manager from Newcastle'
+    'Alex, 27, started as a warehouse operative before moving into safety after seeing an accident firsthand at a chemical plant in Leeds',
+    'Sarah, 31, an HSE manager from Glasgow with 8 years experience - she worked her way up from a junior role after completing night school',
+    'Mike, 29, a safety officer from Birmingham working in construction - he switched from site work after a close call with a crane',
+    'Emma, 26, an environmental health officer from Liverpool who got into safety after helping with a major incident investigation',
+    'David, 33, a safety consultant from Manchester who started in operations and transitioned after realising how important safety really is',
+    'Rachel, 28, a safety supervisor from Bristol - she joined the field after witnessing poor safety practices that led to a colleague getting hurt',
+    'Tom, 30, a QHSE manager from Newcastle who came up through the ranks after beginning as a technician and seeing too many near-misses'
   ];
   
   const persona = personas[sheetNumber % personas.length];
@@ -381,7 +546,7 @@ async function generateAnswersForQuestions(questions, documentText, openai, sett
       const wordCountTarget = settings.wordCountTarget || 500;
       const includeExamples = settings.includeExamples !== false;
       
-      const prompt = `You're ${persona}, writing your NEBOSH exam based on your real work experience.
+      const prompt = `You're ${persona}, writing your NEBOSH exam answer right now based on your real workplace experience.
 
 Context: ${documentText.substring(0, 2000)}
 
@@ -391,68 +556,71 @@ Marks: ${question.marks}
 
 Write EXACTLY ${targetBullets} bullet points.
 
-CRITICAL - Sound like a real person who's seen this stuff firsthand:
-- Reference actual experiences: "At our site we..." or "I've seen..."
-- Use British spelling: realise, organise, colour, behaviour
-- Mix formal and casual: "basically," "thing is," "to be fair," "mind you"
-- Vary sentence length wildly. Some short. Others with multiple clauses that flow naturally and conversationally.
-- Use specific examples: actual companies (BP, Shell, Toyota), real incidents, concrete scenarios
-- Include hedging: "generally," "tends to," "usually," "in most cases," "often"
-- Use contractions naturally: don't, can't, it's, there's, they're, won't
+Write naturally, as if reflecting from your own workplace experience - no need to sound perfect. Think aloud as you write. Some bullets can be full sentences, others can be fragments or short notes (like quick reminders). Don't over-polish. It should read like notes written by a real professional under time pressure.
 
-AVOID these AI red flags:
-- NEVER: "delve," "Moreover," "Furthermore," "Additionally," "In conclusion"
-- NEVER start with: "It is important to note"
-- NO perfect parallel structure in every point
-- NO three-adjective lists: "comprehensive, thorough, and detailed"
+Write like someone genuinely reasoning through their own experience - you don't need to sound perfect. Occasional self-correction or reflective tone is fine, like 'I remember once... actually, that's not quite the same, but similar.' It's fine if two bullets slightly overlap or even contradict - it shows personal reasoning, not memorisation.
 
-Format each bullet point like this:
-• Start with a topic/concept followed by a colon, then provide a natural explanation with examples. Write about ${Math.floor(wordCountTarget/targetBullets)} words per point.
+About ${Math.floor(wordCountTarget/targetBullets)} words per point on average, but vary it. Plain text only, no HTML/bold. Make sheet #${sheetNumber} completely unique.`;
 
-DO NOT use any HTML tags or bold formatting - just write plain text bullet points.
-
-This is Sheet ${sheetNumber} - make it completely unique!`;
-
-      const baseTemperature = settings.temperature || 0.7;
-      const tempVariation = 0.3 + (Math.random() * 0.3);
-      const finalTemp = Math.min(baseTemperature + tempVariation, 1.3);
+      // Balanced temperature for natural variation without losing quality
+      const baseTemperature = settings.temperature || 0.8; // Slightly increased from default
+      const tempVariation = 0.2 + (Math.random() * 0.3); // Moderate variation
+      const finalTemp = Math.min(baseTemperature + tempVariation, 1.2); // Cap at 1.2
       
       const baseMaxTokens = settings.maxTokens || 800;
-      const tokensVariation = Math.floor((Math.random() - 0.5) * 400);
+      const tokensVariation = Math.floor((Math.random() - 0.5) * 300); // Moderate variation
       const variableMaxTokens = Math.max(baseMaxTokens + tokensVariation, 600);
       
-      const presencePenalty = 0.6 + (Math.random() * 0.3);
-      const frequencyPenalty = 0.6 + (Math.random() * 0.3);
+      // Balanced penalties to encourage variation without over-randomization
+      const presencePenalty = 0.65 + (Math.random() * 0.25); // 0.65-0.9 range
+      const frequencyPenalty = 0.65 + (Math.random() * 0.25); // 0.65-0.9 range
       
       console.log(`AI Settings - Temp: ${finalTemp.toFixed(2)}, Tokens: ${variableMaxTokens}, Presence: ${presencePenalty.toFixed(2)}, Frequency: ${frequencyPenalty.toFixed(2)}`);
       
-      const defaultSystem = `You're ${persona}. You're writing exam answers based on your practical experience.
+      const defaultSystem = `You are ${persona}, writing NEBOSH exam answers based on your real workplace experience.
 
-HUMANIZATION RULES (CRITICAL):
-1. Write with PERSONALITY - you've lived this stuff
-2. Use British English (realise, organise, behaviour)
-3. Mix formal and casual language naturally
-4. Vary sentences: Some short. Others longer with natural flow.
-5. Use contractions: don't, can't, it's, won't
-6. Add personal touches: "I've seen," "at our plant," "in my experience"
-7. Use real examples: actual companies, real incidents
-8. Include natural transitions: "So," "Now," "Thing is," "Look,"
-9. Add hedging: "usually," "tends to," "generally," "often"
+WRITE LIKE YOU'RE THINKING ALOUD:
+- Write like someone genuinely reasoning through their own experience - you don't need to sound perfect
+- Occasional self-correction or reflective tone is fine: "I remember once... actually, that's not quite the same, but similar"
+- Show thought progression naturally - it's okay if ideas build on each other or slightly overlap
+- It's fine if two bullets slightly overlap or even contradict - it shows personal reasoning, not memorisation
 
-AVOID AI PATTERNS:
-- NO: "delve," "Moreover," "Furthermore," "Additionally"
-- NO: "It is important to note that"
-- NO generic corporate speak
-- NO perfect balance in every answer
-- NO three-adjective lists
+STRUCTURED CHAOS IN BULLETS:
+- Some bullets can be full sentences, others can be fragments or short notes (like quick reminders)
+- Don't over-polish - it should read like notes written by a real professional under time pressure
+- Mix sentence lengths dramatically: some very short (5-8 words), others longer (20-30 words)
+- Vary how you start each bullet - mix concepts, examples, questions, observations
+- Change sentence rhythm constantly - humans don't use identical patterns
 
-Make EXACTLY ${targetBullets} bullet points. Count them!
+VARY YOUR WRITING STYLE CONSTANTLY:
+- Never repeat "The [X] is..." or "This allows..." patterns
+- Vary your phrasing constantly - mix up sentence structures completely
+- Use thinking indicators naturally: "However," "On the other hand," "That's why," "So," "But," "Now," "Actually"
+- Add subtle emphasis occasionally: "really important," "absolutely critical," "particularly"
 
-Format: • Topic/concept: Natural explanation with real examples.
+WRITE NATURALLY FROM YOUR EXPERIENCE:
+- Draw from actual incidents - reference real situations, sites, companies you've worked with
+- Mix formal and casual naturally: "basically," "thing is," "to be fair" alongside proper technical terms
+- British English spelling: organise, realise, colour, behaviour
+- Personal references: "At our site...", "I've seen...", "In my experience...", "When we..."
+- Real examples: Use actual company names, real incidents, concrete scenarios
+- Natural transitions: "So," "Now," "Thing is," "Right," "Well," "Look"
+- Practical hedging: "usually," "tends to," "generally," "often," "in most cases"
+- Use contractions naturally: don't, can't, it's, won't, they're, we've
 
-DO NOT use any HTML tags or formatting - just plain text.
+AVOID REPETITIVE AI PATTERNS:
+- Never repeat the same sentence structure pattern
+- Don't use "This allows..." or "The system is designed to..." repeatedly
+- Avoid "delve," "Moreover," "Furthermore," "Additionally," "In conclusion"
+- No three-adjective lists: "comprehensive, thorough, and detailed"
+- No corporate jargon: "leverage," "utilize," "facilitate," "paradigm"
+- Avoid overly perfect parallel structures
 
-Sheet ${sheetNumber} - completely unique from other versions.`;
+REQUIREMENTS:
+- Write EXACTLY ${targetBullets} bullet points
+- Format: • Topic/concept: Clear explanation with practical examples
+- Plain text only - no HTML or formatting
+- Make sheet #${sheetNumber} unique - vary structure, examples, and phrasing completely`;
 
       let systemContent = (settings.systemPrompt && settings.systemPrompt.trim().length > 0)
         ? settings.systemPrompt
@@ -496,6 +664,9 @@ Sheet ${sheetNumber} - completely unique from other versions.`;
       
       // Apply humanization tricks
       answer = applyHumanizationTricks(answer);
+      
+      // Additional subtle human imperfections (very light touch)
+      answer = addSubtleHumanImperfections(answer);
       
       // Format bullet points with bold topics
       answer = formatBulletPoints(answer);
