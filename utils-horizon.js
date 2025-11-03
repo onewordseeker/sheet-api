@@ -604,7 +604,6 @@ WRITE NATURALLY FROM YOUR EXPERIENCE:
 - British English spelling: organise, realise, colour, behaviour
 - Personal references: "At our site...", "I've seen...", "In my experience...", "When we..."
 - Real examples: Use actual company names, real incidents, concrete scenarios
-- Natural transitions: "So," "Now," "Thing is," "Right," "Well," "Look"
 - Practical hedging: "usually," "tends to," "generally," "often," "in most cases"
 - Use contractions naturally: don't, can't, it's, won't, they're, we've
 
