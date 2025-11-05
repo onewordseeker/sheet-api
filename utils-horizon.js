@@ -182,7 +182,6 @@ function formatBulletPoints(text) {
   // Remove any existing HTML tags that might be malformed
   text = text.replace(/<\s*\/?\s*b\s*>/gi, '');
   
-  // Split into lines
   const lines = text.split('\n');
   const formattedLines = [];
   let bulletCount = 0;
@@ -190,46 +189,62 @@ function formatBulletPoints(text) {
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i].trim();
     
-    // If line starts with bullet point
     if (line.startsWith('•')) {
       bulletCount++;
       
-      // Randomize formatting rhythm (addresses "randomize formatting rhythm" feedback)
-      // Occasionally add blank line before a bullet (10% chance, not too often)
       if (bulletCount > 1 && Math.random() < 0.10 && formattedLines.length > 0) {
-        formattedLines.push(''); // Blank line for natural spacing variation
+        formattedLines.push('');
       }
       
-      // Remove the bullet temporarily
       let content = line.substring(1).trim();
       
-      // Find the first colon or period that could indicate end of topic
+      // Find the first colon, dash, or period that could indicate end of topic
       const colonIndex = content.indexOf(':');
+      const dashIndex = content.indexOf(' - ');
       const periodIndex = content.indexOf('.');
       
-      // Determine split point (prefer colon, but use period if it comes first and is within reasonable length)
       let splitIndex = -1;
+      let separator = ':';
       
+      // Prefer colon
       if (colonIndex > 0 && colonIndex < 100) {
         splitIndex = colonIndex;
-      } else if (periodIndex > 0 && periodIndex < 100) {
-        // Check if there's a capital letter after the period (might be a sentence, not a topic)
+        separator = ':';
+      } 
+      // Then dash
+      else if (dashIndex > 0 && dashIndex < 100) {
+        splitIndex = dashIndex;
+        separator = ' -';
+      }
+      // Then period (if appropriate)
+      else if (periodIndex > 0 && periodIndex < 100) {
         const afterPeriod = content.substring(periodIndex + 1).trim();
         if (afterPeriod.length > 0 && afterPeriod[0] === afterPeriod[0].toLowerCase()) {
           splitIndex = periodIndex;
+          separator = '.';
+        }
+      }
+      // FALLBACK: If no separator found, bold the first 3-8 words as the topic
+      else {
+        const words = content.split(' ');
+        if (words.length > 3) {
+          const topicWordCount = Math.min(Math.max(3, Math.floor(words.length * 0.25)), 8);
+          const topic = words.slice(0, topicWordCount).join(' ');
+          const rest = words.slice(topicWordCount).join(' ');
+          formattedLines.push(`• <b>${topic}:</b> ${rest}`);
+          continue;
         }
       }
       
       if (splitIndex > 0) {
         const topic = content.substring(0, splitIndex).trim();
-        const rest = content.substring(splitIndex + 1).trim();
+        const rest = content.substring(splitIndex + separator.length).trim();
         formattedLines.push(`• <b>${topic}:</b> ${rest}`);
       } else {
-        // No clear topic separator, just add bullet back
+        // No separator and too short - just add as is
         formattedLines.push(`• ${content}`);
       }
     } else if (line.length > 0) {
-      // Non-bullet line, keep as is
       formattedLines.push(line);
     }
   }
@@ -239,6 +254,7 @@ function formatBulletPoints(text) {
 
 /**
  * Extract questions from PDF text with improved parsing
+ * Fixed to capture all question formats including 3(a), 3(b), etc.
  */
 function extractQuestionsFromText(text) {
   console.log('=== Extracting Questions from Text ===');
@@ -264,43 +280,39 @@ function extractQuestionsFromText(text) {
     
     const questionMatches = [];
     
-    // Pattern 1: "1 (a)"
-    const pattern1 = new RegExp(`\\n\\s*${taskNumber}\\s+\\(\\s*([a-z])\\s*\\)`, 'gi');
-    let match;
-    while ((match = pattern1.exec(taskSection)) !== null) {
-      const subLetter = match[1];
-      const questionId = `${taskNumber}(${subLetter})`;
-      questionMatches.push({
-        index: match.index,
-        id: questionId,
-        fullMatch: match[0],
-        pattern: 'pattern1',
-        isParentQuestion: true
-      });
-      console.log(`Found with pattern1: ${questionId} at index ${match.index}`);
-    }
+    // MAIN PATTERN: Captures all main formats
+    // Matches: "1", "1 (a)", "1(a)", "3 (a)", "3(a)", etc.
+    const mainPattern = new RegExp(
+      `\\n\\s*${taskNumber}\\s*(?:\\(\\s*([a-z])\\s*\\))?\\s*(?![a-z])`,
+      'gi'
+    );
     
-    // Pattern 3: "1(a)"
-    const pattern3 = new RegExp(`\\n\\s*${taskNumber}\\(\\s*([a-z])\\s*\\)`, 'gi');
-    while ((match = pattern3.exec(taskSection)) !== null) {
-      const subLetter = match[1];
-      const questionId = `${taskNumber}(${subLetter})`;
+    let match;
+    while ((match = mainPattern.exec(taskSection)) !== null) {
+      const subLetter = match[1]; // Will be undefined if no letter
+      const questionId = subLetter ? `${taskNumber}(${subLetter})` : taskNumber;
       
+      // Check if we already have this question
       if (!questionMatches.find(q => q.id === questionId)) {
         questionMatches.push({
           index: match.index,
           id: questionId,
           fullMatch: match[0],
-          pattern: 'pattern3',
+          pattern: 'main',
           isParentQuestion: true
         });
-        console.log(`Found with pattern3: ${questionId} at index ${match.index}`);
+        console.log(`Found main pattern: ${questionId} at index ${match.index}`);
       }
     }
     
-    // Pattern 5: "4 (a) (i)"
-    const pattern5 = new RegExp(`\\n\\s*${taskNumber}\\s+\\(\\s*([a-z])\\s*\\)\\s*\\(\\s*([ivxlcdm]+)\\s*\\)`, 'gi');
-    while ((match = pattern5.exec(taskSection)) !== null) {
+    // NESTED PATTERN: For (i), (ii), etc. after main questions
+    // Matches: "1 (a) (i)", "3(a)(i)", etc.
+    const nestedPattern = new RegExp(
+      `\\n\\s*${taskNumber}\\s*\\(\\s*([a-z])\\s*\\)\\s*\\(\\s*([ivxlcdm]+)\\s*\\)`,
+      'gi'
+    );
+    
+    while ((match = nestedPattern.exec(taskSection)) !== null) {
       const subLetter = match[1];
       const romanNumeral = match[2];
       const questionId = `${taskNumber}(${subLetter})(${romanNumeral})`;
@@ -310,22 +322,24 @@ function extractQuestionsFromText(text) {
           index: match.index,
           id: questionId,
           fullMatch: match[0],
-          pattern: 'pattern5',
+          pattern: 'nested',
           parentLetter: subLetter,
           isNested: true
         });
-        console.log(`Found with pattern5: ${questionId} at index ${match.index}`);
+        console.log(`Found nested pattern: ${questionId} at index ${match.index}`);
       }
     }
     
-    // Pattern 6: Continuations
-    const pattern6 = new RegExp(`\\n\\s*\\(\\s*([a-z]+)\\s*\\)`, 'gi');
-    while ((match = pattern6.exec(taskSection)) !== null) {
+    // CONTINUATION PATTERN: For standalone (b), (c), (i), (ii), etc.
+    const continuationPattern = /\n\s*\(\s*([a-z]+)\s*\)/gi;
+    
+    while ((match = continuationPattern.exec(taskSection)) !== null) {
       const subItem = match[1];
       const romanNumerals = ['i', 'ii', 'iii', 'iv', 'v', 'vi', 'vii', 'viii', 'ix', 'x', 'xi', 'xii', 'xiii', 'xiv', 'xv'];
       const isRomanNumeral = romanNumerals.includes(subItem.toLowerCase());
       
       if (isRomanNumeral) {
+        // Find parent letter for roman numerals
         let parentLetter = null;
         for (let i = questionMatches.length - 1; i >= 0; i--) {
           const prevMatch = questionMatches[i];
@@ -349,47 +363,49 @@ function extractQuestionsFromText(text) {
               index: match.index,
               id: questionId,
               fullMatch: match[0],
-              pattern: 'pattern6-roman',
+              pattern: 'continuation-roman',
               parentLetter: parentLetter,
               isNested: true
             });
-            console.log(`Found with pattern6-roman: ${questionId} at index ${match.index}`);
+            console.log(`Found continuation roman: ${questionId} at index ${match.index}`);
           }
         }
-      } else if (subItem.length === 1 && /^[b-z]$/.test(subItem)) {
+      } else if (subItem.length === 1 && /^[a-z]$/.test(subItem)) {
+        // This is a continuation letter like (b), (c)
         const questionId = `${taskNumber}(${subItem})`;
         if (!questionMatches.find(q => q.id === questionId)) {
           questionMatches.push({
             index: match.index,
             id: questionId,
             fullMatch: match[0],
-            pattern: 'pattern6-letter',
+            pattern: 'continuation-letter',
             isParentQuestion: true
           });
-          console.log(`Found with pattern6-letter: ${questionId} at index ${match.index}`);
+          console.log(`Found continuation letter: ${questionId} at index ${match.index}`);
         }
       }
     }
     
-    // Pattern 4: Standalone numbers
-    if (questionMatches.length === 0) {
-      const pattern4 = new RegExp(`\\n\\s*${taskNumber}\\s+(?=[A-Z])`, 'gi');
-      const standaloneMatch = pattern4.exec(taskSection);
-      
-      if (standaloneMatch) {
-        questionMatches.push({
-          index: standaloneMatch.index,
-          id: taskNumber,
-          fullMatch: standaloneMatch[0],
-          pattern: 'pattern4'
-        });
-        console.log(`Found with pattern4: ${taskNumber} at index ${standaloneMatch.index}`);
+    // If this task contains any sub-letters like 3(a), drop the bare parent "3"
+    const hasSubLetters = questionMatches.some(m => /\(\s*[a-z]\s*\)/i.test(m.id));
+    if (hasSubLetters) {
+      for (let i = questionMatches.length - 1; i >= 0; i--) {
+        if (questionMatches[i].id === String(taskNumber)) {
+          questionMatches.splice(i, 1);
+        }
       }
     }
-    
+
+    // Sort by position in text
     questionMatches.sort((a, b) => a.index - b.index);
+    
+    // Capture task-level preamble (explanation before first sub-question or question)
+    const taskPreamble = questionMatches.length > 0
+      ? taskSection.substring(0, questionMatches[0].index).trim()
+      : '';
     console.log(`Total matches found for Task ${taskNumber}: ${questionMatches.length}`);
     
+    // Extract question text and marks for each match
     for (let qIndex = 0; qIndex < questionMatches.length; qIndex++) {
       const currentQuestion = questionMatches[qIndex];
       const nextQuestion = questionMatches[qIndex + 1];
@@ -399,6 +415,7 @@ function extractQuestionsFromText(text) {
       
       let questionText = taskSection.substring(startIndex, endIndex).trim();
       
+      // Extract marks
       let marks = 8;
       const marksMatch = questionText.match(/\((\d+)\)/);
       if (marksMatch) {
@@ -406,18 +423,21 @@ function extractQuestionsFromText(text) {
         console.log(`Detected ${marks} marks for question ${currentQuestion.id}`);
       }
       
+      // Clean up question text
       questionText = questionText
         .replace(/\(\d+\)\s*$/gm, '')
         .replace(/Note:.*$/gims, '')
         .replace(/^\s*\n+/gm, '')
         .trim();
       
+      // Only add if we have meaningful text
       if (questionText.length > 10) {
         questions.push({
           number: currentQuestion.id,
           taskNumber: parseInt(taskNumber),
           taskTitle: taskTitle,
           text: questionText,
+          preamble: taskPreamble,
           marks: marks,
           fullQuestion: `Task ${taskNumber}: ${taskTitle}\n${currentQuestion.id} ${questionText}`
         });
@@ -551,7 +571,7 @@ async function generateAnswersForQuestions(questions, documentText, openai, sett
 Context: ${documentText.substring(0, 2000)}
 
 ${taskKey}
-Question ${question.number}: ${question.text}
+${question.preamble && question.preamble.length > 0 ? `Question context: ${question.preamble}\n` : ''}Question ${question.number}: ${question.text}
 Marks: ${question.marks}
 
 Write EXACTLY ${targetBullets} bullet points.
@@ -617,8 +637,11 @@ AVOID REPETITIVE AI PATTERNS:
 
 REQUIREMENTS:
 - Write EXACTLY ${targetBullets} bullet points
-- Format: • Topic/concept: Clear explanation with practical examples
-- Plain text only - no HTML or formatting
+- CRITICAL FORMATTING: Each bullet MUST start with: • Topic/Concept: Then explanation
+- Every bullet must have a clear topic or key concept followed by a colon (:) before the explanation
+- Example: • Risk Assessment: This involves identifying hazards systematically...
+- Example: • Emergency Procedures: We always brief the team before shifts...
+- Do NOT write bullets without this structure
 - Make sheet #${sheetNumber} unique - vary structure, examples, and phrasing completely`;
 
       let systemContent = (settings.systemPrompt && settings.systemPrompt.trim().length > 0)
