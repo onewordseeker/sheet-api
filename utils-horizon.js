@@ -1,82 +1,339 @@
 /**
  * Utility functions for Horizon UI backend
- * With advanced anti-AI-detection measures
+ * Option 4: Simple generation + Heavy post-processing for variations
  */
 
 /**
- * Apply natural humanization to reduce AI detection (balanced approach)
+ * Post-processing filters - each creates a distinct writing style
  */
-function applyHumanizationTricks(text) {
-  // 1. Replace AI-typical phrases with natural alternatives
-  const aiPhrases = {
-    'Additionally,': ['Also,', 'Plus,', 'And', 'Right,'],
-    'Furthermore,': ['Also,', 'Plus,', 'And', 'Thing is,'],
-    'Moreover,': ['Also,', 'Plus,', 'And', 'Actually,'],
-    'In conclusion,': ['So overall,', 'To sum up,', 'Bottom line,', 'So'],
-    'It is important to note that': ['Worth noting:', 'Thing is,', 'Important:', 'Remember:'],
-    'It should be noted that': ['Note that', 'Keep in mind', 'Remember'],
-    ' comprehensive ': [' thorough ', ' detailed ', ' complete ', ' full '],
-    ' utilize ': [' use ', ' apply ', ' employ '],
-    ' implement ': [' put in place ', ' set up ', ' start ', ' do '],
-    ' facilitate ': [' help ', ' enable ', ' support ', ' allow '],
-    ' demonstrate ': [' show ', ' prove ', ' illustrate ', ' indicate '],
-    ' leverage ': [' use ', ' make use of ', ' take advantage of '],
-    ' paradigm ': [' model ', ' approach ', ' way ', ' method '],
-    'In order to': ['To', 'So we can'],
-    'In the event that': ['If', 'When'],
-    'With regard to': ['About', 'For'],
+const styleFilters = {
+  // Filter 0: Concise & Direct (short bullets)
+  concise: (text) => {
+    let result = text;
+    
+    // Shorten sentences - remove filler words
+    result = result.replace(/\b(basically|essentially|generally|typically|usually)\b/gi, '');
+    result = result.replace(/\b(it is important to note that|it should be noted that)\b/gi, '');
+    result = result.replace(/\s+/g, ' '); // clean double spaces
+    
+    // Make more direct - remove hedging
+    result = result.replace(/\b(may|might|could|possibly|perhaps)\b/gi, 'can');
+    result = result.replace(/\btend to\b/gi, '');
+    
+    // Shorter transitions
+    result = result.replace(/\bHowever,/gi, 'But');
+    result = result.replace(/\bTherefore,/gi, 'So');
+    result = result.replace(/\bAdditionally,/gi, 'Also');
+    
+    return result;
+  },
+
+  // Filter 1: Detailed & Comprehensive (longer explanations)
+  detailed: (text) => {
+    let result = text;
+    
+    // Expand with details
+    result = result.replace(/\bPPE\b/g, 'Personal Protective Equipment (PPE)');
+    result = result.replace(/\bRisk assessment\b/gi, 'Comprehensive risk assessment process');
+    result = result.replace(/\bTraining\b/gi, 'Thorough training and competency development');
+    
+    // Add connecting phrases for flow
+    result = result.replace(/\.\s+([A-Z])/g, (match, letter) => {
+      if (Math.random() < 0.3) {
+        return '. Furthermore, ' + letter.toLowerCase();
+      }
+      return match;
+    });
+    
+    // Add emphasis
+    result = result.replace(/\b(critical|important|essential)\b/gi, (match) => {
+      return 'particularly ' + match.toLowerCase();
+    });
+    
+    return result;
+  },
+
+  // Filter 2: Conversational & Personal
+  conversational: (text) => {
+    let result = text;
+    
+    // Add personal touches
+    result = result.replace(/\bThe organization\b/gi, 'We');
+    result = result.replace(/\bWorkers\b/gi, 'Our team');
+    result = result.replace(/\bManagement\b/gi, 'Our management team');
+    
+    // Add conversational phrases at start of some bullets
+    result = result.replace(/^(• <b>[^:]+:<\/b>)\s*/gm, (match) => {
+      const phrases = [
+        match,
+        match.replace('</b>', '</b> In my experience,'),
+        match.replace('</b>', '</b> From what I\'ve seen,'),
+        match.replace('</b>', '</b> At our site,'),
+        match
+      ];
+      return phrases[Math.floor(Math.random() * phrases.length)];
+    });
+    
+    // Add contractions
+    const contractions = {
+      ' do not ': ' don\'t ',
+      ' does not ': ' doesn\'t ',
+      ' cannot ': ' can\'t ',
+      ' will not ': ' won\'t ',
+      ' should not ': ' shouldn\'t ',
+      ' would not ': ' wouldn\'t ',
+      ' it is ': ' it\'s ',
+      ' that is ': ' that\'s ',
+      ' we are ': ' we\'re ',
+      ' they are ': ' they\'re '
+    };
+    
+    for (const [full, contracted] of Object.entries(contractions)) {
+      result = result.replace(new RegExp(full, 'gi'), contracted);
+    }
+    
+    return result;
+  },
+
+  // Filter 3: Procedural & Step-based
+  procedural: (text) => {
+    let result = text;
+    
+    // Add step indicators
+    let bulletIndex = 0;
+    result = result.replace(/^• <b>([^:]+):<\/b>/gm, (match, topic) => {
+      bulletIndex++;
+      const stepPrefixes = [
+        `• <b>Step ${bulletIndex} - ${topic}:</b>`,
+        `• <b>${topic} (Phase ${bulletIndex}):</b>`,
+        match, // keep some original
+        `• <b>Action ${bulletIndex}: ${topic}:</b>`
+      ];
+      return stepPrefixes[bulletIndex % 4];
+    });
+    
+    // Add sequential language
+    result = result.replace(/\.\s+([A-Z])/g, (match, letter, offset, string) => {
+      const sequenceWords = ['Then', 'Next', 'Following this', 'Subsequently', 'After that'];
+      if (Math.random() < 0.25) {
+        return '. ' + sequenceWords[Math.floor(Math.random() * sequenceWords.length)] + ', ' + letter.toLowerCase();
+      }
+      return match;
+    });
+    
+    return result;
+  },
+
+  // Filter 4: Example-Rich
+  exampleRich: (text) => {
+    let result = text;
+    
+    // Add example phrases
+    const exampleStarters = [
+      'For example,',
+      'For instance,',
+      'Such as',
+      'Like when',
+      'Including'
+    ];
+    
+    result = result.replace(/\.\s+([A-Z])/g, (match, letter, offset) => {
+      if (Math.random() < 0.2) {
+        const starter = exampleStarters[Math.floor(Math.random() * exampleStarters.length)];
+        return '. ' + starter + ' ' + letter.toLowerCase();
+      }
+      return match;
+    });
+    
+    // Add scenario references
+    result = result.replace(/^(• <b>[^:]+:<\/b>)\s*/gm, (match) => {
+      if (Math.random() < 0.3) {
+        const scenarios = [
+          match.replace('</b>', '</b> In warehouse operations,'),
+          match.replace('</b>', '</b> On construction sites,'),
+          match.replace('</b>', '</b> During maintenance work,'),
+          match
+        ];
+        return scenarios[Math.floor(Math.random() * scenarios.length)];
+      }
+      return match;
+    });
+    
+    return result;
+  },
+
+  // Filter 5: Formal & Professional
+  formal: (text) => {
+    let result = text;
+    
+    // Remove contractions
+    const expansions = {
+      'don\'t': 'do not',
+      'doesn\'t': 'does not',
+      'can\'t': 'cannot',
+      'won\'t': 'will not',
+      'shouldn\'t': 'should not',
+      'wouldn\'t': 'would not',
+      'it\'s': 'it is',
+      'that\'s': 'that is',
+      'we\'re': 'we are',
+      'they\'re': 'they are'
+    };
+    
+    for (const [contracted, full] of Object.entries(expansions)) {
+      result = result.replace(new RegExp(contracted, 'gi'), full);
+    }
+    
+    // More formal transitions
+    result = result.replace(/\bBut\b/gi, 'However');
+    result = result.replace(/\bSo\b/gi, 'Therefore');
+    result = result.replace(/\bAlso\b/gi, 'Additionally');
+    
+    // More formal language
+    result = result.replace(/\bget\b/gi, 'obtain');
+    result = result.replace(/\bshow\b/gi, 'demonstrate');
+    result = result.replace(/\bhelp\b/gi, 'assist');
+    
+    return result;
+  },
+
+  // Filter 6: Analytical & Evidence-based
+  analytical: (text) => {
+    let result = text;
+    
+    // Add analytical language
+    result = result.replace(/^(• <b>[^:]+:<\/b>)\s*/gm, (match) => {
+      const analyticalStarters = [
+        match,
+        match.replace('</b>', '</b> Evidence indicates that'),
+        match.replace('</b>', '</b> Research shows that'),
+        match.replace('</b>', '</b> Analysis demonstrates that'),
+        match
+      ];
+      return analyticalStarters[Math.floor(Math.random() * analyticalStarters.length)];
+    });
+    
+    // Add hedging for academic tone
+    result = result.replace(/\b(is|are)\b/g, (match) => {
+      if (Math.random() < 0.2) {
+        return match + ' typically';
+      }
+      return match;
+    });
+    
+    // Add reasoning connectors
+    result = result.replace(/\.\s+([A-Z])/g, (match, letter) => {
+      const connectors = ['Consequently', 'As a result', 'This indicates that', 'This suggests that'];
+      if (Math.random() < 0.15) {
+        return '. ' + connectors[Math.floor(Math.random() * connectors.length)] + ', ' + letter.toLowerCase();
+      }
+      return match;
+    });
+    
+    return result;
+  }
+};
+
+/**
+ * Apply synonym variations for more diversity
+ */
+function applySynonymVariations(text, intensity = 0.3) {
+  const synonymGroups = {
+    'risk': ['risk', 'hazard', 'danger', 'threat'],
+    'ensure': ['ensure', 'make sure', 'guarantee', 'verify'],
+    'implement': ['implement', 'put in place', 'establish', 'set up', 'introduce'],
+    'important': ['important', 'critical', 'essential', 'vital', 'crucial'],
+    'worker': ['worker', 'employee', 'staff member', 'personnel'],
+    'organization': ['organization', 'company', 'business', 'organisation'],
+    'procedure': ['procedure', 'process', 'protocol', 'system'],
+    'assess': ['assess', 'evaluate', 'examine', 'review', 'analyse'],
+    'identify': ['identify', 'recognise', 'spot', 'detect', 'find'],
+    'reduce': ['reduce', 'minimize', 'decrease', 'lower', 'cut'],
+    'improve': ['improve', 'enhance', 'better', 'upgrade', 'strengthen'],
+    'monitor': ['monitor', 'track', 'check', 'observe', 'watch'],
+    'provide': ['provide', 'supply', 'offer', 'give', 'deliver'],
+    'require': ['require', 'need', 'demand', 'call for', 'necessitate']
   };
   
-  let humanized = text;
+  let result = text;
   
-  for (const [aiPhrase, humanAlternatives] of Object.entries(aiPhrases)) {
-    const regex = new RegExp(aiPhrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
-    humanized = humanized.replace(regex, () => {
-      return humanAlternatives[Math.floor(Math.random() * humanAlternatives.length)];
+  for (const [base, synonyms] of Object.entries(synonymGroups)) {
+    // Only replace some occurrences based on intensity
+    const regex = new RegExp(`\\b${base}\\b`, 'gi');
+    result = result.replace(regex, (match) => {
+      if (Math.random() < intensity) {
+        const synonym = synonyms[Math.floor(Math.random() * synonyms.length)];
+        // Match case
+        if (match[0] === match[0].toUpperCase()) {
+          return synonym.charAt(0).toUpperCase() + synonym.slice(1);
+        }
+        return synonym;
+      }
+      return match;
     });
   }
   
-  // 2. Add contractions naturally (60-65% of the time)
-  const contractions = {
-    ' do not ': ' don\'t ',
-    ' does not ': ' doesn\'t ',
-    ' cannot ': ' can\'t ',
-    ' will not ': ' won\'t ',
-    ' should not ': ' shouldn\'t ',
-    ' would not ': ' wouldn\'t ',
-    ' could not ': ' couldn\'t ',
-    ' it is ': ' it\'s ',
-    ' that is ': ' that\'s ',
-    ' there is ': ' there\'s ',
-    ' they are ': ' they\'re ',
-    ' we are ': ' we\'re ',
-    ' you are ': ' you\'re ',
-    ' I am ': ' I\'m ',
-    ' you have ': ' you\'ve ',
-    ' we have ': ' we\'ve '
-  };
+  return result;
+}
+
+/**
+ * Vary bullet topic styles based on sheet number
+ */
+function varyTopicStyle(text, sheetNumber) {
+  let result = text;
   
-  for (const [full, contracted] of Object.entries(contractions)) {
-    const regex = new RegExp(full, 'gi');
-    humanized = humanized.replace(regex, (match) => {
-      return Math.random() < 0.62 ? contracted : match;
-    });
-  }
+  const topicStyles = [
+    // Style 0: Keep original topics
+    (topic) => topic,
+    
+    // Style 1: Add descriptive adjectives
+    (topic) => {
+      const adjectives = ['Key', 'Critical', 'Essential', 'Important', 'Primary'];
+      return adjectives[Math.floor(Math.random() * adjectives.length)] + ' ' + topic;
+    },
+    
+    // Style 2: Make into questions
+    (topic) => 'Why ' + topic + '?',
+    
+    // Style 3: Add action words
+    (topic) => {
+      const actions = ['Understanding', 'Implementing', 'Managing', 'Controlling', 'Monitoring'];
+      return actions[Math.floor(Math.random() * actions.length)] + ' ' + topic;
+    },
+    
+    // Style 4: Add location/context
+    (topic) => {
+      const contexts = ['Workplace', 'Site', 'Facility', 'Operational'];
+      return contexts[Math.floor(Math.random() * contexts.length)] + ' ' + topic;
+    },
+    
+    // Style 5: Shorten topics
+    (topic) => topic.split(' ').slice(0, 2).join(' '),
+    
+    // Style 6: Make more specific
+    (topic) => topic + ' Process'
+  ];
   
-  // 3. Add natural transitions occasionally (not too frequently)
-  humanized = humanized.replace(/\.\s+([A-Z])/g, (match, letter) => {
-    const rand = Math.random();
-    if (rand < 0.08) return `. So ${letter.toLowerCase()}`;
-    if (rand < 0.12) return `. Now, ${letter.toLowerCase()}`;
-    if (rand < 0.15) return `. Well, ${letter.toLowerCase()}`;
-    if (rand < 0.18) return `. Thing is, ${letter.toLowerCase()}`;
+  const styleFunction = topicStyles[sheetNumber % 7];
+  
+  result = result.replace(/<b>([^<:]+):<\/b>/g, (match, topic) => {
+    if (Math.random() < 0.4) {
+      return '<b>' + styleFunction(topic.trim()) + ':</b>';
+    }
     return match;
   });
   
-  // 4. British English spelling (more comprehensive)
+  return result;
+}
+
+/**
+ * British English spelling
+ */
+function applyBritishSpelling(text) {
   const britishSpelling = {
     'organize': 'organise',
     'organized': 'organised',
+    'organizing': 'organising',
     'organization': 'organisation',
     'organizations': 'organisations',
     'realize': 'realise',
@@ -94,141 +351,52 @@ function applyHumanizationTricks(text) {
     'center': 'centre',
     'centers': 'centres',
     'defense': 'defence',
-    'defenses': 'defences'
+    'defenses': 'defences',
+    'labor': 'labour',
+    'labors': 'labours'
   };
   
+  let result = text;
   for (const [american, british] of Object.entries(britishSpelling)) {
     const regex = new RegExp(`\\b${american}\\b`, 'gi');
-    humanized = humanized.replace(regex, british);
+    result = result.replace(regex, british);
   }
   
-  // 5. Replace formal transitions with natural alternatives (subtle)
-  const casualPhrases = [
-    { pattern: /\bTherefore\b/gi, replacements: ['So', 'That means', 'This means'] },
-    { pattern: /\bHowever\b/gi, replacements: ['But', 'Mind you,', 'Having said that,'] },
-    { pattern: /\bConsequently\b/gi, replacements: ['So', 'Because of that', 'As a result'] },
-    { pattern: /\bNevertheless\b/gi, replacements: ['Still', 'Even so', 'But'] }
-  ];
-  
-  for (const { pattern, replacements } of casualPhrases) {
-    humanized = humanized.replace(pattern, (match) => {
-      if (Math.random() < 0.25) {
-        return replacements[Math.floor(Math.random() * replacements.length)];
-      }
-      return match;
-    });
-  }
-  
-  // 6. Vary sentence structures - convert some passive to active voice naturally
-  humanized = humanized.replace(/\bIt is ([a-z]+ed)\s+that/gi, (match, verb) => {
-    if (Math.random() < 0.15) {
-      return `We ${verb} that`;
-    }
-    return match;
-  });
-  
-  // 7. Break repetitive sentence patterns (addresses AI detector issue #4)
-  // Change repetitive "This allows...", "The system is designed to..." patterns
-  const repetitivePatterns = [
-    { pattern: /\bThis allows\b/gi, alternatives: ['This means', 'This lets', 'So we can', 'Which means'] },
-    { pattern: /\bThe system is designed to\b/gi, alternatives: ['The system helps', 'We designed it to', 'It\'s meant to', 'It works to'] },
-    { pattern: /\bThis ensures\b/gi, alternatives: ['This means', 'This keeps', 'So that', 'Which keeps'] },
-    { pattern: /\bIt is important\b/gi, alternatives: ['Key point:', 'Worth noting:', 'Remember:', 'Important:'] }
-  ];
-  
-  for (const { pattern, alternatives } of repetitivePatterns) {
-    humanized = humanized.replace(pattern, (match, offset, string) => {
-      // Check if this pattern appears multiple times - if so, vary it
-      const occurrences = (string.match(new RegExp(pattern.source, 'gi')) || []).length;
-      if (occurrences > 1 && Math.random() < 0.4) {
-        return alternatives[Math.floor(Math.random() * alternatives.length)];
-      }
-      return match;
-    });
-  }
-  
-  // 8. Add thinking indicators - show thought progression (addresses issue #5)
-  // Add "However," "On the other hand," "That's why," etc. naturally
-  humanized = humanized.replace(/\.\s+([A-Z][a-z]+ is)/g, (match, start) => {
-    const thinkingIndicators = ['However, ', 'On the other hand, ', 'That\'s why ', 'So ', 'Now, ', 'But '];
-    if (Math.random() < 0.12) {
-      const indicator = thinkingIndicators[Math.floor(Math.random() * thinkingIndicators.length)];
-      return '. ' + indicator.toLowerCase() + start.toLowerCase();
-    }
-    return match;
-  });
-  
-  // 9. Vary sentence beginnings to break uniformity (addresses issue #1)
-  // Occasionally start sentences with different structures
-  humanized = humanized.replace(/^([•]\s*)([A-Z][a-z]+)\s+(is|are|can|should|must|will)/gm, (match, bullet, subject, verb) => {
-    const variations = [
-      `${bullet}${subject} ${verb}`,
-      `${bullet}When it comes to ${subject.toLowerCase()}, it ${verb}`,
-      `${bullet}For ${subject.toLowerCase()}, we ${verb === 'is' ? 'have' : verb}`,
-    ];
-    if (Math.random() < 0.15) {
-      return variations[Math.floor(Math.random() * variations.length)];
-    }
-    return match;
-  });
-  
-  return humanized;
+  return result;
 }
 
 /**
  * Format bullet points with bold topics
  */
 function formatBulletPoints(text) {
-  // Remove any existing HTML tags that might be malformed
   text = text.replace(/<\s*\/?\s*b\s*>/gi, '');
   
   const lines = text.split('\n');
   const formattedLines = [];
-  let bulletCount = 0;
   
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i].trim();
     
     if (line.startsWith('•')) {
-      bulletCount++;
-      
-      if (bulletCount > 1 && Math.random() < 0.10 && formattedLines.length > 0) {
-        formattedLines.push('');
-      }
-      
       let content = line.substring(1).trim();
       
-      // Find the first colon, dash, or period that could indicate end of topic
       const colonIndex = content.indexOf(':');
       const dashIndex = content.indexOf(' - ');
-      const periodIndex = content.indexOf('.');
       
       let splitIndex = -1;
       let separator = ':';
       
-      // Prefer colon
       if (colonIndex > 0 && colonIndex < 100) {
         splitIndex = colonIndex;
         separator = ':';
-      } 
-      // Then dash
-      else if (dashIndex > 0 && dashIndex < 100) {
+      } else if (dashIndex > 0 && dashIndex < 100) {
         splitIndex = dashIndex;
         separator = ' -';
-      }
-      // Then period (if appropriate)
-      else if (periodIndex > 0 && periodIndex < 100) {
-        const afterPeriod = content.substring(periodIndex + 1).trim();
-        if (afterPeriod.length > 0 && afterPeriod[0] === afterPeriod[0].toLowerCase()) {
-          splitIndex = periodIndex;
-          separator = '.';
-        }
-      }
-      // FALLBACK: If no separator found, bold the first 3-8 words as the topic
-      else {
+      } else {
+        // Fallback: bold first 3-6 words
         const words = content.split(' ');
         if (words.length > 3) {
-          const topicWordCount = Math.min(Math.max(3, Math.floor(words.length * 0.25)), 8);
+          const topicWordCount = Math.min(Math.max(3, Math.floor(words.length * 0.3)), 6);
           const topic = words.slice(0, topicWordCount).join(' ');
           const rest = words.slice(topicWordCount).join(' ');
           formattedLines.push(`• <b>${topic}:</b> ${rest}`);
@@ -241,7 +409,6 @@ function formatBulletPoints(text) {
         const rest = content.substring(splitIndex + separator.length).trim();
         formattedLines.push(`• <b>${topic}:</b> ${rest}`);
       } else {
-        // No separator and too short - just add as is
         formattedLines.push(`• ${content}`);
       }
     } else if (line.length > 0) {
@@ -253,8 +420,7 @@ function formatBulletPoints(text) {
 }
 
 /**
- * Extract questions from PDF text with improved parsing
- * Fixed to capture all question formats including 3(a), 3(b), etc.
+ * Extract questions from PDF text
  */
 function extractQuestionsFromText(text) {
   console.log('=== Extracting Questions from Text ===');
@@ -280,8 +446,6 @@ function extractQuestionsFromText(text) {
     
     const questionMatches = [];
     
-    // MAIN PATTERN: Captures all main formats
-    // Matches: "1", "1 (a)", "1(a)", "3 (a)", "3(a)", etc.
     const mainPattern = new RegExp(
       `\\n\\s*${taskNumber}\\s*(?:\\(\\s*([a-z])\\s*\\))?\\s*(?![a-z])`,
       'gi'
@@ -289,10 +453,9 @@ function extractQuestionsFromText(text) {
     
     let match;
     while ((match = mainPattern.exec(taskSection)) !== null) {
-      const subLetter = match[1]; // Will be undefined if no letter
+      const subLetter = match[1];
       const questionId = subLetter ? `${taskNumber}(${subLetter})` : taskNumber;
       
-      // Check if we already have this question
       if (!questionMatches.find(q => q.id === questionId)) {
         questionMatches.push({
           index: match.index,
@@ -305,8 +468,6 @@ function extractQuestionsFromText(text) {
       }
     }
     
-    // NESTED PATTERN: For (i), (ii), etc. after main questions
-    // Matches: "1 (a) (i)", "3(a)(i)", etc.
     const nestedPattern = new RegExp(
       `\\n\\s*${taskNumber}\\s*\\(\\s*([a-z])\\s*\\)\\s*\\(\\s*([ivxlcdm]+)\\s*\\)`,
       'gi'
@@ -330,7 +491,6 @@ function extractQuestionsFromText(text) {
       }
     }
     
-    // CONTINUATION PATTERN: For standalone (b), (c), (i), (ii), etc.
     const continuationPattern = /\n\s*\(\s*([a-z]+)\s*\)/gi;
     
     while ((match = continuationPattern.exec(taskSection)) !== null) {
@@ -339,7 +499,6 @@ function extractQuestionsFromText(text) {
       const isRomanNumeral = romanNumerals.includes(subItem.toLowerCase());
       
       if (isRomanNumeral) {
-        // Find parent letter for roman numerals
         let parentLetter = null;
         for (let i = questionMatches.length - 1; i >= 0; i--) {
           const prevMatch = questionMatches[i];
@@ -371,7 +530,6 @@ function extractQuestionsFromText(text) {
           }
         }
       } else if (subItem.length === 1 && /^[a-z]$/.test(subItem)) {
-        // This is a continuation letter like (b), (c)
         const questionId = `${taskNumber}(${subItem})`;
         if (!questionMatches.find(q => q.id === questionId)) {
           questionMatches.push({
@@ -386,7 +544,6 @@ function extractQuestionsFromText(text) {
       }
     }
     
-    // If this task contains any sub-letters like 3(a), drop the bare parent "3"
     const hasSubLetters = questionMatches.some(m => /\(\s*[a-z]\s*\)/i.test(m.id));
     if (hasSubLetters) {
       for (let i = questionMatches.length - 1; i >= 0; i--) {
@@ -396,16 +553,14 @@ function extractQuestionsFromText(text) {
       }
     }
 
-    // Sort by position in text
     questionMatches.sort((a, b) => a.index - b.index);
     
-    // Capture task-level preamble (explanation before first sub-question or question)
     const taskPreamble = questionMatches.length > 0
       ? taskSection.substring(0, questionMatches[0].index).trim()
       : '';
+    
     console.log(`Total matches found for Task ${taskNumber}: ${questionMatches.length}`);
     
-    // Extract question text and marks for each match
     for (let qIndex = 0; qIndex < questionMatches.length; qIndex++) {
       const currentQuestion = questionMatches[qIndex];
       const nextQuestion = questionMatches[qIndex + 1];
@@ -415,7 +570,6 @@ function extractQuestionsFromText(text) {
       
       let questionText = taskSection.substring(startIndex, endIndex).trim();
       
-      // Extract marks
       let marks = 8;
       const marksMatch = questionText.match(/\((\d+)\)/);
       if (marksMatch) {
@@ -423,14 +577,12 @@ function extractQuestionsFromText(text) {
         console.log(`Detected ${marks} marks for question ${currentQuestion.id}`);
       }
       
-      // Clean up question text
       questionText = questionText
         .replace(/\(\d+\)\s*$/gm, '')
         .replace(/Note:.*$/gims, '')
         .replace(/^\s*\n+/gm, '')
         .trim();
       
-      // Only add if we have meaningful text
       if (questionText.length > 10) {
         questions.push({
           number: currentQuestion.id,
@@ -457,95 +609,14 @@ function extractQuestionsFromText(text) {
 }
 
 /**
- * Add subtle natural variations to text (addresses AI detector issues #2 and #3)
- */
-function addSubtleHumanImperfections(text) {
-  let result = text;
-  
-  // 1. Very occasionally add natural comma variation (humans sometimes pause mid-thought)
-  result = result.replace(/\s+and\s+([a-z])/gi, (match, letter, offset, str) => {
-    // Only in longer phrases where comma feels natural
-    if (Math.random() < 0.05 && match.length > 12) {
-      return ', and ' + letter;
-    }
-    return match;
-  });
-  
-  // 2. Add slight imperfections in transitions (addresses issue #2 - perfect grammar)
-  // Occasionally use slightly imperfect but natural transitions
-  result = result.replace(/\b(However|Therefore|Additionally|Furthermore)\s*,/gi, (match, word) => {
-    if (Math.random() < 0.08) {
-      // Occasionally drop the comma or change structure
-      const variations = {
-        'However': ['But', 'Though', 'Mind you'],
-        'Therefore': ['So', 'That\'s why', 'Because of this'],
-        'Additionally': ['Also', 'Plus'],
-        'Furthermore': ['Also', 'And']
-      };
-      const alt = variations[word];
-      return alt ? alt[Math.floor(Math.random() * alt.length)] + ' ' : match;
-    }
-    return match;
-  });
-  
-  // 3. Occasionally break up long perfectly structured sentences (addresses issue #1 - uniformity)
-  // Split very long sentences with good flow into two shorter ones
-  result = result.replace(/([^.!?]{80,120})\.\s+([A-Z])/g, (match, firstPart, secondPart) => {
-    if (Math.random() < 0.10 && firstPart.includes(',')) {
-      // Find a good break point (comma near the middle)
-      const commaIndex = firstPart.lastIndexOf(',');
-      if (commaIndex > 30 && commaIndex < firstPart.length - 30) {
-        const part1 = firstPart.substring(0, commaIndex);
-        const part2 = firstPart.substring(commaIndex + 1).trim();
-        return `${part1}. ${part2.charAt(0).toUpperCase() + part2.slice(1)}. ${secondPart}`;
-      }
-    }
-    return match;
-  });
-  
-  // 4. Add subtle emotion/stress indicators (addresses issue #3 - lack of emotion/bias)
-  // Very occasionally add slight emphasis or concern
-  result = result.replace(/\b(critical|important|essential)\s+(point|factor|aspect)/gi, (match, adj, noun) => {
-    if (Math.random() < 0.06) {
-      return `really ${adj} ${noun}`; // Adds slight emphasis
-    }
-    return match;
-  });
-  
-  // 5. Add mid-thought connectors - natural hesitations and thinking (addresses "think aloud" feedback)
-  result = result.replace(/\.\s+([A-Z][a-z]+)/g, (match, word) => {
-    if (Math.random() < 0.05) { // 5% chance for natural hesitation
-      const fillers = [' Actually, ', ' To be fair, ', ' I guess ', ' You know, ', ' Mind you, '];
-      const filler = fillers[Math.floor(Math.random() * fillers.length)];
-      return `.${filler}${word.toLowerCase()}`;
-    }
-    return match;
-  });
-  
-  return result;
-}
-
-/**
- * Generate answers with anti-AI-detection measures
+ * Generate answers - SIMPLE PROMPT, rely on post-processing for variation
  */
 async function generateAnswersForQuestions(questions, documentText, openai, settings, sheetNumber) {
-  console.log('=== Generating Answers with Anti-Detection ===');
+  console.log('=== Generating Answers (Simple + Post-Processing) ===');
   console.log(`Processing ${questions.length} questions for Sheet ${sheetNumber}`);
+  console.log(`Will apply filter: ${Object.keys(styleFilters)[sheetNumber % 7]}`);
   
   const taskGroups = {};
-  
-  // Personal voices with lived details for realism
-  const personas = [
-    'Alex, 27, started as a warehouse operative before moving into safety after seeing an accident firsthand at a chemical plant in Leeds',
-    'Sarah, 31, an HSE manager from Glasgow with 8 years experience - she worked her way up from a junior role after completing night school',
-    'Mike, 29, a safety officer from Birmingham working in construction - he switched from site work after a close call with a crane',
-    'Emma, 26, an environmental health officer from Liverpool who got into safety after helping with a major incident investigation',
-    'David, 33, a safety consultant from Manchester who started in operations and transitioned after realising how important safety really is',
-    'Rachel, 28, a safety supervisor from Bristol - she joined the field after witnessing poor safety practices that led to a colleague getting hurt',
-    'Tom, 30, a QHSE manager from Newcastle who came up through the ranks after beginning as a technician and seeing too many near-misses'
-  ];
-  
-  const persona = personas[sheetNumber % personas.length];
   
   for (const question of questions) {
     try {
@@ -554,7 +625,7 @@ async function generateAnswersForQuestions(questions, documentText, openai, sett
       const extraPoints = 2 + Math.floor(Math.random() * 2);
       const targetBullets = question.marks + extraPoints;
       
-      console.log(`Target: ${targetBullets} bullet points (${question.marks} marks + ${extraPoints} extra)`);
+      console.log(`Target: ${targetBullets} bullet points`);
       
       const taskKey = `Task ${question.taskNumber}: ${question.taskTitle}`;
       
@@ -562,141 +633,77 @@ async function generateAnswersForQuestions(questions, documentText, openai, sett
         taskGroups[taskKey] = {};
       }
       
-      const answerFormat = settings.answerFormat || 'bullet-points';
       const wordCountTarget = settings.wordCountTarget || 500;
-      const includeExamples = settings.includeExamples !== false;
       
-      const prompt = `You're ${persona}, writing your NEBOSH exam answer right now based on your real workplace experience.
+      // SIMPLE PROMPT - Let GPT do what it's good at
+      const prompt = `You're a NEBOSH-qualified safety professional writing exam answers based on workplace experience.
 
 Context: ${documentText.substring(0, 2000)}
 
 ${taskKey}
-${question.preamble && question.preamble.length > 0 ? `Question context: ${question.preamble}\n` : ''}Question ${question.number}: ${question.text}
+${question.preamble && question.preamble.length > 0 ? `Question context: ${question.preamble}\n` : ''}
+Question ${question.number}: ${question.text}
 Marks: ${question.marks}
 
-Write EXACTLY ${targetBullets} bullet points.
+Write EXACTLY ${targetBullets} bullet points (approximately ${Math.floor(wordCountTarget/targetBullets)} words per point).
 
-Write naturally, as if reflecting from your own workplace experience - no need to sound perfect. Think aloud as you write. Some bullets can be full sentences, others can be fragments or short notes (like quick reminders). Don't over-polish. It should read like notes written by a real professional under time pressure.
+Format each bullet as:
+• Topic Name: Explanation with practical details and examples
 
-Write like someone genuinely reasoning through their own experience - you don't need to sound perfect. Occasional self-correction or reflective tone is fine, like 'I remember once... actually, that's not quite the same, but similar.' It's fine if two bullets slightly overlap or even contradict - it shows personal reasoning, not memorisation.
+Requirements:
+- Write clear, accurate NEBOSH-standard answers
+- Use British English (organise, realise, behaviour)
+- Include practical workplace examples
+- Be specific and detailed
+- Plain text only (no HTML/bold in generation)`;
 
-About ${Math.floor(wordCountTarget/targetBullets)} words per point on average, but vary it. Plain text only, no HTML/bold. Make sheet #${sheetNumber} completely unique.`;
-
-      // Balanced temperature for natural variation without losing quality
-      const baseTemperature = settings.temperature || 0.8; // Slightly increased from default
-      const tempVariation = 0.2 + (Math.random() * 0.3); // Moderate variation
-      const finalTemp = Math.min(baseTemperature + tempVariation, 1.2); // Cap at 1.2
-      
-      const baseMaxTokens = settings.maxTokens || 800;
-      const tokensVariation = Math.floor((Math.random() - 0.5) * 300); // Moderate variation
-      const variableMaxTokens = Math.max(baseMaxTokens + tokensVariation, 600);
-      
-      // Balanced penalties to encourage variation without over-randomization
-      const presencePenalty = 0.65 + (Math.random() * 0.25); // 0.65-0.9 range
-      const frequencyPenalty = 0.65 + (Math.random() * 0.25); // 0.65-0.9 range
-      
-      console.log(`AI Settings - Temp: ${finalTemp.toFixed(2)}, Tokens: ${variableMaxTokens}, Presence: ${presencePenalty.toFixed(2)}, Frequency: ${frequencyPenalty.toFixed(2)}`);
-      
-      const defaultSystem = `You are ${persona}, writing NEBOSH exam answers based on your real workplace experience.
-
-WRITE LIKE YOU'RE THINKING ALOUD:
-- Write like someone genuinely reasoning through their own experience - you don't need to sound perfect
-- Occasional self-correction or reflective tone is fine: "I remember once... actually, that's not quite the same, but similar"
-- Show thought progression naturally - it's okay if ideas build on each other or slightly overlap
-- It's fine if two bullets slightly overlap or even contradict - it shows personal reasoning, not memorisation
-
-STRUCTURED CHAOS IN BULLETS:
-- Some bullets can be full sentences, others can be fragments or short notes (like quick reminders)
-- Don't over-polish - it should read like notes written by a real professional under time pressure
-- Mix sentence lengths dramatically: some very short (5-8 words), others longer (20-30 words)
-- Vary how you start each bullet - mix concepts, examples, questions, observations
-- Change sentence rhythm constantly - humans don't use identical patterns
-
-VARY YOUR WRITING STYLE CONSTANTLY:
-- Never repeat "The [X] is..." or "This allows..." patterns
-- Vary your phrasing constantly - mix up sentence structures completely
-- Use thinking indicators naturally: "However," "On the other hand," "That's why," "So," "But," "Now," "Actually"
-- Add subtle emphasis occasionally: "really important," "absolutely critical," "particularly"
-
-WRITE NATURALLY FROM YOUR EXPERIENCE:
-- Draw from actual incidents - reference real situations, sites, companies you've worked with
-- Mix formal and casual naturally: "basically," "thing is," "to be fair" alongside proper technical terms
-- British English spelling: organise, realise, colour, behaviour
-- Personal references: "At our site...", "I've seen...", "In my experience...", "When we..."
-- Real examples: Use actual company names, real incidents, concrete scenarios
-- Practical hedging: "usually," "tends to," "generally," "often," "in most cases"
-- Use contractions naturally: don't, can't, it's, won't, they're, we've
-
-AVOID REPETITIVE AI PATTERNS:
-- Never repeat the same sentence structure pattern
-- Don't use "This allows..." or "The system is designed to..." repeatedly
-- Avoid "delve," "Moreover," "Furthermore," "Additionally," "In conclusion"
-- No three-adjective lists: "comprehensive, thorough, and detailed"
-- No corporate jargon: "leverage," "utilize," "facilitate," "paradigm"
-- Avoid overly perfect parallel structures
-
-REQUIREMENTS:
-- Write EXACTLY ${targetBullets} bullet points
-- CRITICAL FORMATTING: Each bullet MUST start with: • Topic/Concept: Then explanation
-- Every bullet must have a clear topic or key concept followed by a colon (:) before the explanation
-- Example: • Risk Assessment: This involves identifying hazards systematically...
-- Example: • Emergency Procedures: We always brief the team before shifts...
-- Do NOT write bullets without this structure
-- Make sheet #${sheetNumber} unique - vary structure, examples, and phrasing completely`;
-
-      let systemContent = (settings.systemPrompt && settings.systemPrompt.trim().length > 0)
-        ? settings.systemPrompt
-        : defaultSystem;
-
-      // Simple templating for custom prompts
-      if (settings.systemPrompt && settings.systemPrompt.trim().length > 0) {
-        const replacements = {
-          '{{persona}}': persona,
-          '{{targetBullets}}': String(targetBullets),
-          '{{sheetNumber}}': String(sheetNumber),
-          '{{answerFormat}}': answerFormat,
-          '{{wordCountTarget}}': String(wordCountTarget),
-          '{{documentContext}}': documentText.substring(0, 2000),
-        };
-        for (const key in replacements) {
-          systemContent = systemContent.split(key).join(replacements[key]);
-        }
-      }
-
+      // Standard settings - consistency first, variation comes from post-processing
       const completion = await openai.chat.completions.create({
         model: settings.openaiModel || "gpt-4o-mini",
         messages: [
           {
             role: "system",
-            content: systemContent
+            content: settings.systemPrompt || `You are a NEBOSH-qualified health and safety professional with practical workplace experience. Write clear, accurate exam answers using British English spelling. Format each bullet point with a topic followed by detailed explanation.`
           },
           {
             role: "user",
             content: prompt
           }
         ],
-        max_tokens: variableMaxTokens,
-        temperature: finalTemp,
-        presence_penalty: presencePenalty,
-        frequency_penalty: frequencyPenalty,
-        top_p: 0.95
+        max_tokens: settings.maxTokens || 800,
+        temperature: settings.temperature || 0.7,
+        presence_penalty: 0.3,
+        frequency_penalty: 0.3
       });
 
       let answer = completion.choices[0].message.content;
       
-      // Apply humanization tricks
-      answer = applyHumanizationTricks(answer);
+      // POST-PROCESSING: This is where variation happens
+      console.log(`Applying post-processing filter: ${Object.keys(styleFilters)[sheetNumber % 7]}`);
       
-      // Additional subtle human imperfections (very light touch)
-      answer = addSubtleHumanImperfections(answer);
-      
-      // Format bullet points with bold topics
+      // 1. Format bullet points first
       answer = formatBulletPoints(answer);
+      
+      // 2. Apply the style filter for this sheet
+      const filterName = Object.keys(styleFilters)[sheetNumber % 7];
+      const filterFunction = styleFilters[filterName];
+      answer = filterFunction(answer);
+      
+      // 3. Apply synonym variations (different intensity per sheet)
+      const synonymIntensity = 0.2 + (sheetNumber % 7) * 0.1; // 0.2 to 0.8
+      answer = applySynonymVariations(answer, synonymIntensity);
+      
+      // 4. Vary topic styles
+      answer = varyTopicStyle(answer, sheetNumber);
+      
+      // 5. British spelling
+      answer = applyBritishSpelling(answer);
       
       taskGroups[taskKey][question.number] = answer;
       
       const bulletCount = (answer.match(/^•/gm) || []).length;
       console.log(`✓ Generated answer for ${question.number} - Target: ${targetBullets}, Got: ${bulletCount} bullets`);
+      console.log(`Applied style: ${filterName}`);
       
     } catch (error) {
       console.error(`Error generating answer for question ${question.number}:`, error);
