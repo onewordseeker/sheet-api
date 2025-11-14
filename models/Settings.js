@@ -16,7 +16,7 @@ const settingsSchema = new mongoose.Schema({
   openaiModel: {
     type: String,
     default: 'gpt-4.1-mini',
-    enum: ['gpt-3.5-turbo', 'gpt-4', 'gpt-4-turbo', 'gpt-4.1-mini']
+    enum: ['gpt-3.5-turbo', 'gpt-4', 'gpt-4-turbo', 'gpt-4.1-mini', 'gpt-5.1', 'gpt-4o-mini']
   },
   temperature: {
     type: Number,
