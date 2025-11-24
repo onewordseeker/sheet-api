@@ -246,6 +246,18 @@ function formatBulletPoints(text) {
   return formattedLines.join("\n");
 }
 
+function enforceBulletCount(answer, targetBullets, question) {
+  const safeTarget = Math.max(1, parseInt(targetBullets, 10) || 1);
+  const bulletLines = (answer.match(/^•.*$/gm) || []).map((line) => line.trim());
+  let normalized = bulletLines.slice(0, safeTarget);
+  while (normalized.length < safeTarget) {
+    const index = normalized.length + 1;
+    const fallbackLine = `• <b>Additional Insight ${index}:</b> Further detail covering ${question?.taskTitle || 'the requirement'} to satisfy the requested bullet count.`;
+    normalized.push(fallbackLine);
+  }
+  return normalized.join("\n");
+}
+
 function extractQuestionsFromText(text) {
   console.log("=== Extracting Questions from Text ===");
   console.log(`Text length: ${text.length} characters`);
@@ -353,23 +365,14 @@ function extractQuestionsFromText(text) {
   return questions;
 }
 
-async function generateAnswersForQuestions(questions, documentText, openai, settings, sheetNumber) {
+async function generateAnswersForQuestions(questions, documentText, openai, settings, sheetNumber, options = {}) {
   console.log("=== Generating Answers ===");
   console.log(`Processing ${questions.length} questions for Sheet ${sheetNumber}`);
   console.log(`Will apply filter: ${Object.keys(styleFilters)[sheetNumber % 7]}`);
+  const { bulletConfig = {}, promptOverrides = {}, attachmentsContext = "" } = options || {};
   const taskGroups = {};
-  for (const question of questions) {
-    try {
-      console.log(`\nProcessing question: ${question.number} (${question.marks} marks)`);
-      const extraPoints = 2 + Math.floor(Math.random() * 2);
-      const targetBullets = question.marks + extraPoints;
-      console.log(`Target: ${targetBullets} bullet points`);
-      const taskKey = `Task ${question.taskNumber}: ${question.taskTitle}`;
-      if (!taskGroups[taskKey]) taskGroups[taskKey] = {};
-      const wordCountTarget = settings.wordCountTarget || 500;
-      
-      // BUILD USER PROMPT FROM settings.userPrompt (NOT systemPrompt!)
-      const userPrompt = (settings.userPrompt || `EXAM QUESTION:
+  const defaultSystemPrompt = "You are a NEBOSH-qualified health and safety professional. Write naturally with varied sentence lengths. Use British English. Format: • <b>Topic:</b> Explanation";
+  const defaultUserTemplate = `EXAM QUESTION:
 
 Task: {taskTitle}
 {preamble}
@@ -379,22 +382,40 @@ Question {questionNumber}: {questionText}
 Marks: {marks}
 Required Bullets: {targetBullets}
 
-Write EXACTLY {targetBullets} bullet points answering this question.
+Attachment Context:
+{attachmentsContext}
 
 Use this context: {documentContext}
 
+Write EXACTLY {targetBullets} bullet points answering this question.
 FORMAT: • <b>Topic:</b> Explanation
-
 DO NOT say "Understood" or acknowledge instructions.
-ANSWER THE QUESTION DIRECTLY NOW.`)
+ANSWER THE QUESTION DIRECTLY NOW.`;
+  const combinedContext = attachmentsContext ? `${documentText}\n\nATTACHMENT CONTEXT:\n${attachmentsContext}` : documentText;
+  const truncatedContext = combinedContext.substring(0, 4000);
+  for (const question of questions) {
+    try {
+      console.log(`\nProcessing question: ${question.number} (${question.marks} marks)`);
+      const extraPoints = 2 + Math.floor(Math.random() * 2);
+      const suggestedTarget = Math.max(question.marks + extraPoints, 4);
+      const manualTargetRaw = bulletConfig[question.number];
+      const manualTarget = manualTargetRaw !== undefined ? parseInt(manualTargetRaw, 10) : undefined;
+      const targetBullets = Math.max(1, Number.isFinite(manualTarget) ? manualTarget : suggestedTarget);
+      console.log(`Target: ${targetBullets} bullet points`);
+      const taskKey = `Task ${question.taskNumber}: ${question.taskTitle}`;
+      if (!taskGroups[taskKey]) taskGroups[taskKey] = {};
+      const wordCountTarget = settings.wordCountTarget || 500;
+
+      const userPrompt = (promptOverrides.userPrompt || settings.attachmentUserPrompt || settings.userPrompt || defaultUserTemplate)
         .replace(/{targetBullets}/g, targetBullets)
-        .replace(/{wordCountPerBullet}/g, Math.floor(wordCountTarget/targetBullets))
-        .replace(/{documentContext}/g, documentText.substring(0, 2000))
+        .replace(/{wordCountPerBullet}/g, Math.floor(wordCountTarget / targetBullets))
+        .replace(/{documentContext}/g, truncatedContext)
         .replace(/{taskTitle}/g, taskKey)
         .replace(/{preamble}/g, question.preamble && question.preamble.length > 0 ? `Context: ${question.preamble}` : "")
         .replace(/{questionNumber}/g, question.number)
         .replace(/{questionText}/g, question.text)
-        .replace(/{marks}/g, question.marks);
+        .replace(/{marks}/g, question.marks)
+        .replace(/{attachmentsContext}/g, attachmentsContext || "No attachment context provided.");
 
       const model = settings.openaiModel || "gpt-4o-mini";
       const isO1Model = model.includes("o1") || model.includes("o3");
@@ -406,7 +427,7 @@ ANSWER THE QUESTION DIRECTLY NOW.`)
         messages: [
           {
             role: "system",
-            content: settings.systemPrompt || "You are a NEBOSH-qualified health and safety professional. Write naturally with varied sentence lengths. Use British English. Format: • <b>Topic:</b> Explanation"
+            content: promptOverrides.systemPrompt || settings.attachmentSystemPrompt || settings.systemPrompt || defaultSystemPrompt
           },
           {
             role: "user",
@@ -442,16 +463,19 @@ ANSWER THE QUESTION DIRECTLY NOW.`)
       answer = applySynonymVariations(answer, synonymIntensity);
       answer = varyTopicStyle(answer, sheetNumber);
       answer = applyBritishSpelling(answer);
-      taskGroups[taskKey][question.number] = answer;
+      const normalizedAnswer = enforceBulletCount(answer, targetBullets, question);
+      taskGroups[taskKey][question.number] = normalizedAnswer;
 
-      const bulletCount = (answer.match(/^•/gm) || []).length;
+      const bulletCount = (normalizedAnswer.match(/^•/gm) || []).length;
       console.log(`✓ Generated answer for ${question.number} - Target: ${targetBullets}, Got: ${bulletCount} bullets`);
       console.log(`Applied style: ${filterName}`);
     } catch (error) {
       console.error(`Error generating answer for question ${question.number}:`, error);
       const taskKey = `Task ${question.taskNumber}: ${question.taskTitle}`;
       if (!taskGroups[taskKey]) taskGroups[taskKey] = {};
-      const fallbackBullets = question.marks + 3;
+      const fallbackManualRaw = bulletConfig[question.number];
+      const fallbackManual = fallbackManualRaw !== undefined ? parseInt(fallbackManualRaw, 10) : undefined;
+      const fallbackBullets = Math.max(Number.isFinite(fallbackManual) ? fallbackManual : question.marks + 3, 1);
       let fallbackAnswer = "";
       for (let i = 1; i <= fallbackBullets; i++) {
         fallbackAnswer += `• <b>Key Point ${i}:</b> This answer would cover ${question.taskTitle} with practical examples and clear explanations.\n`;

@@ -63,6 +63,28 @@ const upload = multer({
   }
 });
 
+const attachmentUpload = multer({
+  storage: storage,
+  limits: {
+    fileSize: 15 * 1024 * 1024
+  },
+  fileFilter: (req, file, cb) => {
+    const allowed = [
+      'application/pdf',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'text/plain',
+      'image/png',
+      'image/jpeg'
+    ];
+    if (allowed.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Unsupported attachment type'), false);
+    }
+  }
+});
+
 // Separate multer instance for CSV uploads
 const csvStorage = multer.diskStorage({
   destination: (req, file, cb) => {
@@ -638,6 +660,220 @@ app.post('/api/generate-answers/batch', upload.single('pdf'), async (req, res) =
       fs.unlinkSync(req.file.path);
     }
     res.status(500).json({ error: 'Failed to generate batch answer sheets' });
+  }
+});
+
+app.post('/api/attachment-generation/preview', upload.single('pdf'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No question paper uploaded' });
+    }
+    const pdfBuffer = fs.readFileSync(req.file.path);
+    const pdfData = await pdfParse(pdfBuffer);
+    const documentText = pdfData.text;
+    const questions = extractQuestionsFromText(documentText);
+    fs.unlinkSync(req.file.path);
+    if (!questions.length) {
+      return res.status(400).json({ error: 'No questions detected in the question paper' });
+    }
+    const preview = questions.map((q) => ({
+      number: q.number,
+      taskNumber: q.taskNumber,
+      taskTitle: q.taskTitle,
+      marks: q.marks,
+      text: q.text,
+      suggestedBullets: Math.max(4, Math.round(q.marks * 1.2))
+    }));
+    res.json({ success: true, questions: preview });
+  } catch (error) {
+    console.error('Attachment preview error:', error);
+    if (req.file && fs.existsSync(req.file.path)) {
+      fs.unlinkSync(req.file.path);
+    }
+    res.status(500).json({ error: 'Failed to analyze question paper' });
+  }
+});
+
+app.post('/api/attachment-generation/generate', attachmentUpload.fields([
+  { name: 'questionPaper', maxCount: 1 },
+  { name: 'attachments', maxCount: 10 }
+]), async (req, res) => {
+  const startTime = Date.now();
+  const cleanupPaths = [];
+  try {
+    const questionPaperFile = req.files?.questionPaper?.[0];
+    if (!questionPaperFile) {
+      return res.status(400).json({ error: 'Question paper is required' });
+    }
+    cleanupPaths.push(questionPaperFile.path);
+    if (questionPaperFile.mimetype !== 'application/pdf') {
+      return res.status(400).json({ error: 'Question paper must be a PDF file' });
+    }
+
+    const { listId, generateAll, attachmentSystemPrompt, attachmentUserPrompt } = req.body;
+    let { candidateIds } = req.body;
+
+    if (!listId) {
+      return res.status(400).json({ error: 'listId is required' });
+    }
+
+    const list = await CandidateList.findById(listId);
+    if (!list) return res.status(404).json({ error: 'List not found' });
+
+    let selectedCandidates = [];
+    if (generateAll === 'true' || generateAll === true) {
+      selectedCandidates = await Candidate.find({ listId }).sort({ sequenceId: 1, learnerName: 1 });
+    } else {
+      if (candidateIds && !Array.isArray(candidateIds)) {
+        candidateIds = [candidateIds];
+      }
+      if (!candidateIds || candidateIds.length === 0) {
+        return res.status(400).json({ error: 'candidateIds are required unless generateAll=true' });
+      }
+      selectedCandidates = await Candidate.find({ _id: { $in: candidateIds } });
+    }
+
+    if (!selectedCandidates.length) {
+      return res.status(400).json({ error: 'No candidates to generate' });
+    }
+
+    const pdfBuffer = fs.readFileSync(questionPaperFile.path);
+    const pdfData = await pdfParse(pdfBuffer);
+    const documentText = pdfData.text;
+    const questions = extractQuestionsFromText(documentText);
+    if (!questions.length) {
+      return res.status(400).json({ error: 'No questions found in the question paper' });
+    }
+
+    let bulletConfig = {};
+    if (req.body.bulletOverrides) {
+      try {
+        bulletConfig = JSON.parse(req.body.bulletOverrides);
+      } catch (err) {
+        console.warn('Invalid bulletOverrides payload', err);
+      }
+    }
+
+    const attachmentFiles = req.files?.attachments || [];
+    const attachmentDetails = [];
+    let attachmentsContext = '';
+    for (const attachment of attachmentFiles) {
+      cleanupPaths.push(attachment.path);
+      let attachmentText = '';
+      try {
+        if (attachment.mimetype === 'application/pdf') {
+          const buffer = fs.readFileSync(attachment.path);
+          const parsed = await pdfParse(buffer);
+          attachmentText = parsed.text.slice(0, 4000);
+        } else if (attachment.mimetype.startsWith('text/')) {
+          attachmentText = fs.readFileSync(attachment.path, 'utf-8').slice(0, 4000);
+        } else {
+          attachmentText = '';
+        }
+      } catch (err) {
+        console.error('Attachment parsing error:', attachment.originalname, err);
+      }
+      attachmentsContext += `Attachment: ${attachment.originalname}\n${attachmentText}\n\n`;
+      attachmentDetails.push({
+        name: attachment.originalname,
+        mimetype: attachment.mimetype,
+        size: attachment.size
+      });
+    }
+    attachmentsContext = attachmentsContext.slice(0, 10000);
+
+    const adminUser = await User.findOne({ email: 'admin@example.com' });
+    const settings = await Settings.getOrCreateSettings(adminUser._id);
+    const openaiWithSettings = new OpenAI({ apiKey: settings.openaiApiKey || process.env.OPENAI_API_KEY });
+
+    const outputDir = 'output';
+    if (!fs.existsSync(outputDir)) {
+      fs.mkdirSync(outputDir, { recursive: true });
+    }
+    const templatePath = path.join(__dirname, 'template.docx');
+    const results = [];
+
+    for (let index = 0; index < selectedCandidates.length; index++) {
+      const cand = selectedCandidates[index];
+      try {
+        const answers = await generateAnswersForQuestions(
+          questions,
+          documentText,
+          openaiWithSettings,
+          settings,
+          index + 1,
+          {
+            bulletConfig,
+            promptOverrides: {
+              systemPrompt: attachmentSystemPrompt && attachmentSystemPrompt.trim().length ? attachmentSystemPrompt : undefined,
+              userPrompt: attachmentUserPrompt && attachmentUserPrompt.trim().length ? attachmentUserPrompt : undefined
+            },
+            attachmentsContext
+          }
+        );
+        const answerSheetData = { name: cand.learnerName, number: cand.learnerId, answers, wordCount: 0 };
+        const outputPath = path.join(outputDir, `horizon-attachment-sheet-${Date.now()}-${cand._id}.docx`);
+        const docxBuffer = await createAnswerSheet(templatePath, outputPath, answerSheetData);
+
+        const storageId = `horizon-attachment-${Date.now()}-${cand._id}`;
+        answerSheetStorage.set(storageId, {
+          buffer: docxBuffer,
+          filename: `answer-sheet-${cand.learnerName.replace(/\s+/g, '-')}-${Date.now()}.docx`,
+          timestamp: new Date().toISOString()
+        });
+
+        const record = new AnswerSheet({
+          learnerName: cand.learnerName,
+          learnerNumber: cand.learnerId,
+          originalPdfName: questionPaperFile.originalname,
+          originalPdfPath: questionPaperFile.path,
+          generatedDocxPath: outputPath,
+          generatedDocxName: `answer-sheet-${cand.learnerName.replace(/\s+/g, '-')}-${Date.now()}.docx`,
+          extractedText: documentText,
+          questionsCount: questions.length,
+          tasksCount: Object.keys(answers).length,
+          totalQuestions: questions.length,
+          totalTasks: Object.keys(answers).length,
+          answers: answers,
+          wordCount: 0,
+          processingTime: Date.now() - startTime,
+          aiModel: settings.openaiModel || 'GPT-4',
+          temperature: settings.temperature || 0.7,
+          maxTokens: settings.maxTokens || 800,
+          status: 'completed',
+          storageId: storageId,
+          fileSize: docxBuffer.length,
+          createdBy: adminUser.email
+        });
+        await record.save();
+
+        results.push({ id: storageId, candidateId: cand._id, name: cand.learnerName });
+      } catch (err) {
+        console.error('Attachment generation error for candidate', cand._id, err);
+      }
+    }
+
+    res.json({
+      success: true,
+      generated: results,
+      count: results.length,
+      questions: questions.length,
+      attachmentDetails,
+      bullets: bulletConfig
+    });
+  } catch (error) {
+    console.error('Attachment generation error:', error);
+    res.status(500).json({ error: 'Failed to generate answer sheets with attachments' });
+  } finally {
+    for (const filePath of cleanupPaths) {
+      try {
+        if (filePath && fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath);
+        }
+      } catch (err) {
+        console.error('Cleanup error:', err);
+      }
+    }
   }
 });
 

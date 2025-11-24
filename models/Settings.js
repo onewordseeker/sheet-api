@@ -83,6 +83,18 @@ const settingsSchema = new mongoose.Schema({
     type: String,
     default: ''
   },
+  userPrompt: {
+    type: String,
+    default: ''
+  },
+  attachmentSystemPrompt: {
+    type: String,
+    default: ''
+  },
+  attachmentUserPrompt: {
+    type: String,
+    default: ''
+  },
   
   // Template Settings
   templatePath: {
